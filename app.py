@@ -23,7 +23,8 @@ def create_app():
     # Session configuration - persist across page refreshes and server restarts
     app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=24)  # 24 hours
     app.config['SESSION_COOKIE_HTTPONLY'] = True
-    app.config['SESSION_COOKIE_SECURE'] = False  # Set to True in production with HTTPS
+    # Set to True in production with HTTPS (Render, Railway provide HTTPS)
+    app.config['SESSION_COOKIE_SECURE'] = os.environ.get('FLASK_ENV') == 'production'
     app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
     app.config['SESSION_COOKIE_NAME'] = 'cv_session'
     # Make session cookie persist across browser sessions
@@ -125,6 +126,12 @@ def register_modules(app):
     # from modules.module6 import module6_bp
     # app.register_blueprint(module6_bp)
 
+# Create app instance for Gunicorn
+app = create_app()
+
 if __name__ == "__main__":
-    app = create_app()
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    # In production, use environment variable for port (Render, Railway, etc. set PORT)
+    port = int(os.environ.get('PORT', 5000))
+    # Only enable debug in development
+    debug = os.environ.get('FLASK_ENV') == 'development'
+    app.run(host="0.0.0.0", port=port, debug=debug)

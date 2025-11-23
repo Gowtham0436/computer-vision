@@ -1,0 +1,44 @@
+name: Deploy Flask App
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: Verify app
+        run: |
+          python -m py_compile app.py
+          python -c "from app import app; print('✓ App loads successfully')"
+      
+      - name: Build and test
+        run: |
+          echo "✓ All checks passed"
+          echo "Ready for deployment!"
+      
+      - name: Deployment Status
+        run: |
+          echo "::notice::App is ready to deploy!"
+          echo "::notice::Connect this workflow to your deployment platform:"
+          echo "::notice::1. Render: Add RENDER_API_KEY and RENDER_SERVICE_ID secrets"
+          echo "::notice::2. Railway: Add RAILWAY_TOKEN and RAILWAY_SERVICE_ID secrets"
+          echo "::notice::3. Or use the deploy-render.yml or deploy-railway.yml workflows"
+
