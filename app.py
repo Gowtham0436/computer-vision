@@ -13,9 +13,10 @@ def create_app():
     app = Flask(__name__)
     
     # Configuration
-    # Use fixed secret key so sessions persist across server restarts
-    # In production, load from environment variable: os.environ.get('SECRET_KEY')
-    app.secret_key = os.environ.get('SECRET_KEY', 'cv-assignment-secret-key-2024-fixed-for-sessions')
+    # SECRET_KEY must be set as environment variable (required for production)
+    app.secret_key = os.environ.get('SECRET_KEY', 'dev-key-change-in-production')
+    if app.secret_key == 'dev-key-change-in-production' and os.environ.get('FLASK_ENV') == 'production':
+        raise ValueError("SECRET_KEY environment variable must be set for production")
     app.config['UPLOAD_FOLDER'] = 'uploads'
     app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB
     app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg'}

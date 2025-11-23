@@ -48,6 +48,7 @@ uploads/*
 static/outputs/*
 !static/outputs/.gitkeep
 *.pkl
+face_encodings.pkl
 models/*.onnx
 !models/.gitkeep
 
@@ -57,3 +58,11 @@ models/*.onnx
 
 # Logs
 *.log
+
+# Keep deployment files
+!.github/
+!Procfile
+!Dockerfile
+!runtime.txt
+!render.yaml
+!railway.json

@@ -1,4 +1,4 @@
-name: Deploy to Render via GitHub Actions
+name: Deploy to Render
 
 on:
   push:
@@ -38,16 +38,9 @@ jobs:
           service-id: ${{ secrets.RENDER_SERVICE_ID }}
           api-key: ${{ secrets.RENDER_API_KEY }}
       
-      - name: Deployment Instructions
+      - name: Deployment Info
         if: ${{ secrets.RENDER_API_KEY == '' || secrets.RENDER_SERVICE_ID == '' }}
         run: |
-          echo "::warning::Render API credentials not found!"
-          echo "::notice::To enable auto-deployment:"
-          echo "::notice::1. Get Render API key: Dashboard → Account Settings → API Keys"
-          echo "::notice::2. Get Service ID: Service Settings → Service ID"
-          echo "::notice::3. Add to GitHub Secrets: Settings → Secrets → Actions"
-          echo "::notice::   - RENDER_API_KEY"
-          echo "::notice::   - RENDER_SERVICE_ID"
-          echo "::notice::"
-          echo "::notice::OR: Connect repo directly in Render dashboard for auto-deploy (no Actions needed)"
-
+          echo "::notice::Render credentials not configured"
+          echo "::notice::For auto-deploy: Add RENDER_API_KEY and RENDER_SERVICE_ID to GitHub Secrets"
+          echo "::notice::Or use Render's built-in auto-deploy (no Actions needed)"
