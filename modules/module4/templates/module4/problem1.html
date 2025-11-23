@@ -1,0 +1,217 @@
+{% extends "base.html" %}
+{% block title %}Module 4 - Problem 1{% endblock %}
+{% block header %}Module 4 - Problem 1{% endblock %}
+{% block subheader %}Image Stitching{% endblock %}
+
+{% block styles %}
+<style>
+  .main-container { max-width: 1400px; margin: 0 auto; }
+  .upload-section { text-align: center; margin-bottom: 30px; }
+  .upload-box { border: 3px dashed #667eea; border-radius: 10px; padding: 30px; cursor: pointer; transition: background 0.3s; display: inline-block; margin: 10px; min-width: 200px; }
+  .upload-box:hover { background: #f8f9fa; }
+  .image-preview-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 15px; margin: 20px 0; }
+  .preview-item { position: relative; }
+  .preview-item img { width: 100%; height: 120px; object-fit: cover; border-radius: 8px; border: 2px solid #ddd; }
+  .preview-item .remove-btn { position: absolute; top: -5px; right: -5px; background: red; color: white; border: none; border-radius: 50%; width: 25px; height: 25px; cursor: pointer; font-weight: bold; }
+  canvas, img { 
+    max-width: 100%; 
+    max-height: 600px; 
+    width: auto; 
+    height: auto; 
+    border-radius: 8px; 
+    box-shadow: 0 3px 10px rgba(0,0,0,0.2); 
+    display: block; 
+    margin: 0 auto; 
+    image-rendering: -webkit-optimize-contrast;
+    image-rendering: auto;
+  }
+  .info-box { background: #e3f2fd; padding: 15px; border-radius: 10px; margin: 20px 0; border-left: 4px solid #2196F3; }
+  .results-section { background: #e8f5e9; padding: 20px; border-radius: 10px; margin-top: 20px; }
+  .image-card { background: white; padding: 15px; border-radius: 10px; box-shadow: 0 3px 10px rgba(0,0,0,0.1); margin: 15px 0; }
+  .image-card h4 { margin: 0 0 10px 0; color: #667eea; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="main-container">
+  <div style="margin-bottom: 20px;">
+    <a href="/module4" class="btn">← Back to Module 4</a>
+    <a href="/modules" class="btn">All Modules</a>
+  </div>
+
+  <h2>Problem 1: Image Stitching</h2>
+  <ol style="line-height: 1.8; margin-bottom: 20px;">
+    <li>Upload <strong>at least 4 images</strong> (landscape) or <strong>8 images</strong> (portrait)</li>
+    <li>Images should be <strong>consecutive views</strong> with overlapping regions</li>
+    <li>Click <strong>Stitch Images</strong> to create panorama</li>
+    <li>Compare custom stitching with OpenCV Stitcher and mobile panorama</li>
+  </ol>
+
+  <div class="info-box">
+    <h3 style="margin-top: 0; color: #1976D2;">📸 Image Stitching Guidelines</h3>
+    <ul style="text-align: left; line-height: 1.8;">
+      <li>Capture images with <strong>30-50% overlap</strong> between consecutive images</li>
+      <li>Keep camera at <strong>same height</strong> and move horizontally (or vertically for portrait)</li>
+      <li>Maintain <strong>similar exposure</strong> and lighting across all images</li>
+      <li>Upload images in <strong>order</strong> (left to right or top to bottom)</li>
+      <li>Ensure images have <strong>sufficient features</strong> for matching (textures, edges)</li>
+      <li>Minimum: <strong>4 images</strong> (landscape) or <strong>8 images</strong> (portrait)</li>
+    </ul>
+  </div>
+
+  <div class="upload-section">
+    <div class="upload-box" onclick="document.getElementById('imageInput').click()">
+      <h4>📤 Add Images</h4>
+      <p>Select multiple images</p>
+      <input type="file" id="imageInput" accept="image/*" multiple style="display:none" onchange="handleFileUpload(event)">
+    </div>
+  </div>
+
+  <div id="previewSection" style="display:none;">
+    <h3>Uploaded Images (<span id="imageCount">0</span>)</h3>
+    <div class="image-preview-grid" id="previewGrid"></div>
+    <p style="color: #666; margin-top: 10px;">
+      <strong>Note:</strong> Upload at least 4 images (landscape) or 8 images (portrait) for best results.
+    </p>
+  </div>
+
+  <div style="text-align:center; margin: 20px 0;">
+    <button id="stitchBtn" class="btn btn-success" onclick="stitchImages()" disabled>Stitch Images</button>
+    <button class="btn btn-secondary" onclick="resetAll()">Reset All</button>
+  </div>
+
+  <div id="resultsSection" style="display:none;">
+    <h3>Stitching Results</h3>
+    <div class="results-section">
+      <div><strong>Images Stitched:</strong> <span id="numImages">0</span></div>
+      <div><strong>OpenCV Method:</strong> <span id="opencvStatus">-</span></div>
+      <div><strong>Custom Method:</strong> <span id="customStatus">-</span></div>
+      <div style="margin-top: 10px;"><strong>Note:</strong> <span id="comparisonNote">-</span></div>
+    </div>
+    
+    <div class="image-card">
+      <h4>Custom Stitching Result</h4>
+      <img id="customStitchedImg" alt="Custom Stitched">
+    </div>
+    
+    <div class="image-card" id="opencvCard" style="display:none;">
+      <h4>OpenCV Stitcher Result (for comparison)</h4>
+      <img id="opencvStitchedImg" alt="OpenCV Stitched">
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let uploadedImages = [];
+
+function handleFileUpload(e) {
+  const files = Array.from(e.target.files);
+  if(files.length === 0) return;
+  
+  files.forEach(file => {
+    const r = new FileReader();
+    r.onload = (ev) => {
+      uploadedImages.push({
+        name: file.name,
+        data: ev.target.result
+      });
+      updatePreview();
+    };
+    r.readAsDataURL(file);
+  });
+}
+
+function updatePreview() {
+  const grid = document.getElementById('previewGrid');
+  const count = document.getElementById('imageCount');
+  
+  grid.innerHTML = '';
+  count.innerText = uploadedImages.length;
+  
+  uploadedImages.forEach((img, idx) => {
+    const div = document.createElement('div');
+    div.className = 'preview-item';
+    div.innerHTML = `
+      <img src="${img.data}" alt="${img.name}">
+      <button class="remove-btn" onclick="removeImage(${idx})">×</button>
+    `;
+    grid.appendChild(div);
+  });
+  
+  document.getElementById('previewSection').style.display = 'block';
+  document.getElementById('stitchBtn').disabled = uploadedImages.length < 2;
+}
+
+function removeImage(idx) {
+  uploadedImages.splice(idx, 1);
+  updatePreview();
+}
+
+async function stitchImages() {
+  if(uploadedImages.length < 2) {
+    alert('Please upload at least 2 images');
+    return;
+  }
+  
+  if(uploadedImages.length < 4) {
+    if(!confirm(`Only ${uploadedImages.length} images uploaded. Recommended: 4+ images (landscape) or 8+ (portrait). Continue anyway?`)) {
+      return;
+    }
+  }
+  
+  try {
+    const imageDataArray = uploadedImages.map(img => img.data);
+    
+    document.getElementById('stitchBtn').disabled = true;
+    document.getElementById('stitchBtn').innerText = 'Stitching...';
+    
+    const resp = await fetch('/module4/api/stitch_images', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ images: imageDataArray })
+    });
+    
+    const res = await resp.json();
+    document.getElementById('stitchBtn').disabled = false;
+    document.getElementById('stitchBtn').innerText = 'Stitch Images';
+    
+    if(res.success) {
+      document.getElementById('numImages').innerText = res.num_images;
+      document.getElementById('opencvStatus').innerText = res.opencv_success ? 'Success' : 'Failed';
+      document.getElementById('customStatus').innerText = 'Completed';
+      document.getElementById('comparisonNote').innerText = res.comparison_note;
+      
+      document.getElementById('customStitchedImg').src = res.stitched_custom;
+      
+      if(res.opencv_success && res.stitched_opencv) {
+        document.getElementById('opencvStitchedImg').src = res.stitched_opencv;
+        document.getElementById('opencvCard').style.display = 'block';
+      } else {
+        document.getElementById('opencvCard').style.display = 'none';
+      }
+      
+      document.getElementById('resultsSection').style.display = 'block';
+    } else {
+      alert('Error: ' + (res.error || 'Stitching failed'));
+    }
+  } catch(err) {
+    document.getElementById('stitchBtn').disabled = false;
+    document.getElementById('stitchBtn').innerText = 'Stitch Images';
+    alert('Error: ' + err.message);
+  }
+}
+
+function resetAll() {
+  if(confirm('Reset everything and start over?')) {
+    uploadedImages = [];
+    document.getElementById('imageInput').value = '';
+    document.getElementById('previewSection').style.display = 'none';
+    document.getElementById('resultsSection').style.display = 'none';
+    document.getElementById('stitchBtn').disabled = true;
+  }
+}
+</script>
+{% endblock %}
+

@@ -135,6 +135,7 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+cvenv/  # Project virtual environment (Python 3.11)
 
 # Spyder project settings
 .spyderproject
@@ -179,3 +180,10 @@ cython_debug/
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
 .cursorindexingignore
+
+# Face recognition models (downloaded automatically on first run)
+models/
+*.onnx
+
+# Face encodings (user data)
+face_encodings.pkl

@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+
+{% block styles %}
+<style>
+    .main-container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 20px;
+    }
+    
+    .user-info {
+        background: #e8f5e9;
+        padding: 20px;
+        border-radius: 10px;
+        margin-bottom: 30px;
+        text-align: center;
+    }
+    
+    .user-info h3 {
+        color: #2e7d32;
+        margin-bottom: 10px;
+    }
+    
+    .modules-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+        gap: 30px;
+        margin-top: 40px;
+    }
+    
+    .module-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 40px;
+        border-radius: 15px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        transition: transform 0.3s, box-shadow 0.3s;
+        cursor: pointer;
+        text-align: center;
+    }
+    
+    .module-card:hover {
+        transform: translateY(-10px);
+        box-shadow: 0 15px 40px rgba(0,0,0,0.3);
+    }
+    
+    .module-card h2 {
+        font-size: 2em;
+        margin-bottom: 15px;
+    }
+    
+    .module-card p {
+        font-size: 1.1em;
+        opacity: 0.95;
+        line-height: 1.6;
+    }
+    
+    .module-icon {
+        font-size: 4em;
+        margin-bottom: 20px;
+    }
+    
+    .coming-soon {
+        background: linear-gradient(135deg, #6c757d 0%, #495057 100%);
+        cursor: not-allowed;
+    }
+    
+    .coming-soon:hover {
+        transform: none;
+    }
+    
+    .badge {
+        display: inline-block;
+        background: rgba(255,255,255,0.3);
+        padding: 5px 15px;
+        border-radius: 20px;
+        font-size: 0.9em;
+        margin-top: 10px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="main-container">
+    <div class="user-info">
+        <h3>Authenticated Successfully</h3>
+        <p>Welcome, Gowtham! <button class="btn btn-danger" onclick="logout()">Logout</button></p>
+    </div>
+    
+    <h1 style="text-align: center; margin-bottom: 40px;">CSc 8830 - Assignment Modules</h1>
+    
+    <div class="modules-grid">
+        <!-- Module 1 - Active -->
+        <div class="module-card" onclick="goToModule(1)">
+            <div class="module-icon"></div>
+            <h2>Module 1</h2>
+            <p>Object Dimension Measurement</p>
+            <p style="font-size: 0.95em; margin-top: 15px;">ROI Selection & Two-Point Methods</p>
+        </div>
+        
+        <!-- Module 2 - Active -->
+        <div class="module-card" onclick="goToModule(2)">
+            <div class="module-icon"></div>
+            <h2>Module 2</h2>
+            <p>Advanced Computer Vision</p>
+            <p style="font-size: 0.95em; margin-top: 15px;">Template Matching & Fourier Restoration</p>
+        </div>
+
+        
+        <!-- Module 3 - Active -->
+        <div class="module-card" onclick="goToModule(3)">
+            <div class="module-icon"></div>
+            <h2>Module 3</h2>
+            <p>Image Processing & Segmentation</p>
+            <p style="font-size: 0.95em; margin-top: 15px;">Gradient, Edge/Corner Detection, Boundary & ArUco Segmentation</p>
+        </div>
+
+        <!-- Module 4 - Active -->
+        <div class="module-card" onclick="goToModule(4)">
+            <div class="module-icon"></div>
+            <h2>Module 4</h2>
+            <p>Image Stitching & SIFT Features</p>
+            <p style="font-size: 0.95em; margin-top: 15px;">Panorama Stitching & SIFT Feature Extraction from Scratch</p>
+        </div>
+
+        <!-- Module 5 - Active -->
+        <div class="module-card" onclick="goToModule(5)">
+            <div class="module-icon"></div>
+            <h2>Module 5</h2>
+            <p>Motion Tracking & Object Tracking</p>
+            <p style="font-size: 0.95em; margin-top: 15px;">Motion Equations, Marker/Markerless/SAM2 Tracking</p>
+        </div>
+
+        <!-- Module 7 - Active -->
+        <div class="module-card" onclick="goToModule(7)">
+            <div class="module-icon"></div>
+            <h2>Module 7</h2>
+            <p>Stereo Vision & Pose Estimation</p>
+            <p style="font-size: 0.95em; margin-top: 15px;">Calibrated/Uncalibrated Stereo, Pose & Hand Tracking</p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function goToModule(moduleNum) {
+    window.location.href = '/module' + moduleNum + '/';
+}
+
+async function logout() {
+    await fetch('/logout');
+    window.location.href = '/';
+}
+</script>
+{% endblock %}

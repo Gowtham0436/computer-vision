@@ -1,0 +1,478 @@
+{% extends "base.html" %}
+{% block title %}Module 5 - Problem 2{% endblock %}
+{% block header %}Module 5 - Problem 2{% endblock %}
+{% block subheader %}Real-time Object Tracking{% endblock %}
+
+{% block styles %}
+<style>
+  .main-container { max-width: 1400px; margin: 0 auto; }
+  .upload-section { text-align: center; margin-bottom: 30px; display: flex; gap: 20px; justify-content: center; flex-wrap: wrap; }
+  .upload-box { border: 3px dashed #667eea; border-radius: 10px; padding: 30px; cursor: pointer; transition: background 0.3s; min-width: 250px; }
+  .upload-box:hover { background: #f8f9fa; }
+  .image-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin: 30px 0; }
+  .image-card { background: white; padding: 15px; border-radius: 10px; box-shadow: 0 3px 10px rgba(0,0,0,0.1); }
+  .image-card h4 { margin: 0 0 10px 0; color: #667eea; }
+  canvas, img { 
+    max-width: 100%; 
+    max-height: 500px; 
+    width: auto; 
+    height: auto; 
+    border-radius: 8px; 
+    box-shadow: 0 3px 10px rgba(0,0,0,0.2); 
+    display: block; 
+    margin: 0 auto; 
+    image-rendering: -webkit-optimize-contrast;
+    image-rendering: auto;
+  }
+  .info-box { background: #e3f2fd; padding: 15px; border-radius: 10px; margin: 20px 0; border-left: 4px solid #2196F3; }
+  .results-section { background: #e8f5e9; padding: 20px; border-radius: 10px; margin-top: 20px; }
+  .tabs { display: flex; gap: 10px; margin: 20px 0; flex-wrap: wrap; }
+  .tab { padding: 12px 24px; background: #f8f9fa; border: 2px solid #ddd; border-radius: 5px; cursor: pointer; transition: all 0.3s; }
+  .tab:hover { background: #e9ecef; }
+  .tab.active { background: #667eea; color: white; border-color: #667eea; }
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+  .method-selector { background: #f8f9fa; padding: 15px; border-radius: 10px; margin: 15px 0; }
+  .method-selector label { margin-right: 15px; font-weight: 500; }
+  .bbox-selector { border: 2px dashed #667eea; padding: 20px; border-radius: 10px; margin: 20px 0; text-align: center; }
+  #imageCanvas { border: 2px solid #667eea; cursor: crosshair; max-width: 100%; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="main-container">
+  <div style="margin-bottom: 20px;">
+    <a href="/module5" class="btn">← Back to Module 5</a>
+    <a href="/modules" class="btn">All Modules</a>
+  </div>
+
+  <h2>Problem 2: Real-time Object Tracking</h2>
+  <p style="line-height: 1.8; margin-bottom: 20px;">
+    Three implementations of object tracking:
+    <strong>(i)</strong> Marker-based (ArUco/QR), <strong>(ii)</strong> Markerless, <strong>(iii)</strong> SAM2 segmentation-based.
+  </p>
+
+  <div class="tabs">
+    <div class="tab active" onclick="switchTab('marker')">Marker-based Tracking</div>
+    <div class="tab" onclick="switchTab('markerless')">Markerless Tracking</div>
+    <div class="tab" onclick="switchTab('sam2')">SAM2 Segmentation Tracking</div>
+  </div>
+
+  <!-- Marker-based Tracking Tab -->
+  <div id="markerTab" class="tab-content active">
+    <div class="info-box">
+      <h3 style="margin-top: 0; color: #1976D2;">📋 Marker-based Tracking</h3>
+      <p style="margin: 0; line-height: 1.8;">
+        Tracks objects using ArUco markers or QR codes. Place markers on the object and upload images to track.
+        The system detects markers and draws bounding boxes around tracked objects.
+      </p>
+    </div>
+
+    <div class="method-selector">
+      <h4>Marker Type:</h4>
+      <label><input type="radio" name="markerType" value="aruco" checked> ArUco Markers</label>
+      <label><input type="radio" name="markerType" value="qr"> QR Codes</label>
+    </div>
+
+    <div class="upload-section">
+      <div class="upload-box" onclick="document.getElementById('markerInput').click()">
+        <h4>📤 Upload Image</h4>
+        <p>With ArUco/QR markers</p>
+        <input type="file" id="markerInput" accept="image/*" style="display:none" onchange="handleMarkerUpload(event)">
+      </div>
+    </div>
+
+    <div style="text-align:center; margin: 20px 0;">
+      <button id="markerBtn" class="btn btn-success" onclick="trackMarker()" disabled>Track Object</button>
+      <button class="btn btn-secondary" onclick="resetMarker()">Reset</button>
+    </div>
+
+    <div id="markerResults" style="display:none;">
+      <h3>Tracking Results</h3>
+      <div class="image-grid">
+        <div class="image-card">
+          <h4>Original Image</h4>
+          <img id="markerOriginalImg" alt="Original">
+        </div>
+        <div class="image-card">
+          <h4>Tracked Object</h4>
+          <img id="markerTrackedImg" alt="Tracked">
+        </div>
+      </div>
+      <div class="results-section">
+        <div><strong>Markers Detected:</strong> <span id="markerCount">0</span></div>
+        <div><strong>Tracking Box:</strong> <span id="markerBox">-</span></div>
+        <div><strong>Center:</strong> <span id="markerCenter">-</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Markerless Tracking Tab -->
+  <div id="markerlessTab" class="tab-content">
+    <div class="info-box">
+      <h3 style="margin-top: 0; color: #1976D2;">📋 Markerless Tracking</h3>
+      <p style="margin: 0; line-height: 1.8;">
+        Tracks objects without markers using computer vision tracking algorithms (KCF, CSRT, MOSSE, MIL).
+        Select a bounding box on the image to initialize the tracker.
+      </p>
+    </div>
+
+    <div class="method-selector">
+      <h4>Tracking Algorithm:</h4>
+      <label><input type="radio" name="trackMethod" value="kcf" checked> KCF (Kernelized Correlation Filters)</label>
+      <label><input type="radio" name="trackMethod" value="csrt"> CSRT (Discriminative Correlation Filter)</label>
+      <label><input type="radio" name="trackMethod" value="mosse"> MOSSE (Minimum Output Sum of Squared Error)</label>
+      <label><input type="radio" name="trackMethod" value="mil"> MIL (Multiple Instance Learning)</label>
+    </div>
+
+    <div class="upload-section">
+      <div class="upload-box" onclick="document.getElementById('markerlessInput').click()">
+        <h4>📤 Upload Image</h4>
+        <p>Select object to track</p>
+        <input type="file" id="markerlessInput" accept="image/*" style="display:none" onchange="handleMarkerlessUpload(event)">
+      </div>
+    </div>
+
+    <div id="bboxSelector" class="bbox-selector" style="display:none;">
+      <h4>Select Bounding Box</h4>
+      <p>Click and drag on the image to select the object to track</p>
+      <canvas id="imageCanvas"></canvas>
+      <p style="margin-top: 10px; color: #666;" id="bboxInfo">No selection yet</p>
+    </div>
+
+    <div style="text-align:center; margin: 20px 0;">
+      <button id="markerlessBtn" class="btn btn-success" onclick="trackMarkerless()" disabled>Track Object</button>
+      <button class="btn btn-secondary" onclick="resetMarkerless()">Reset</button>
+    </div>
+
+    <div id="markerlessResults" style="display:none;">
+      <h3>Tracking Results</h3>
+      <div class="image-grid">
+        <div class="image-card">
+          <h4>Original Image</h4>
+          <img id="markerlessOriginalImg" alt="Original">
+        </div>
+        <div class="image-card">
+          <h4>Tracked Object</h4>
+          <img id="markerlessTrackedImg" alt="Tracked">
+        </div>
+      </div>
+      <div class="results-section">
+        <div><strong>Tracking Method:</strong> <span id="trackMethod">-</span></div>
+        <div><strong>Tracking Box:</strong> <span id="markerlessBox">-</span></div>
+        <div><strong>Center:</strong> <span id="markerlessCenter">-</span></div>
+        <div><strong>Tracking Status:</strong> <span id="trackStatus">-</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SAM2 Tracking Tab -->
+  <div id="sam2Tab" class="tab-content">
+    <div class="info-box">
+      <h3 style="margin-top: 0; color: #1976D2;">📋 SAM2 Segmentation Tracking</h3>
+      <p style="margin: 0; line-height: 1.8;">
+        Tracks objects using SAM2 segmentation masks. Upload the original image and the SAM2 segmentation mask
+        (as image or NPZ file). The system uses the mask to track the object boundary.
+      </p>
+    </div>
+
+    <div class="upload-section">
+      <div class="upload-box" onclick="document.getElementById('sam2ImageInput').click()">
+        <h4>📤 Original Image</h4>
+        <p>Image to track</p>
+        <input type="file" id="sam2ImageInput" accept="image/*" style="display:none" onchange="handleSAM2ImageUpload(event)">
+      </div>
+      <div class="upload-box" onclick="document.getElementById('sam2MaskInput').click()">
+        <h4>📤 SAM2 Mask</h4>
+        <p>Segmentation mask (image/NPZ)</p>
+        <input type="file" id="sam2MaskInput" accept="image/*,.npz" style="display:none" onchange="handleSAM2MaskUpload(event)">
+      </div>
+    </div>
+
+    <div style="text-align:center; margin: 20px 0;">
+      <button id="sam2Btn" class="btn btn-success" onclick="trackSAM2()" disabled>Track Object</button>
+      <button class="btn btn-secondary" onclick="resetSAM2()">Reset</button>
+    </div>
+
+    <div id="sam2Results" style="display:none;">
+      <h3>Tracking Results</h3>
+      <div class="image-grid">
+        <div class="image-card">
+          <h4>Original Image</h4>
+          <img id="sam2OriginalImg" alt="Original">
+        </div>
+        <div class="image-card">
+          <h4>Tracked Object</h4>
+          <img id="sam2TrackedImg" alt="Tracked">
+        </div>
+        <div class="image-card">
+          <h4>Tracking Overlay</h4>
+          <img id="sam2OverlayImg" alt="Overlay">
+        </div>
+      </div>
+      <div class="results-section">
+        <div><strong>Tracking Method:</strong> SAM2 Segmentation</div>
+        <div><strong>Tracking Box:</strong> <span id="sam2Box">-</span></div>
+        <div><strong>Center:</strong> <span id="sam2Center">-</span></div>
+        <div><strong>Contour Area:</strong> <span id="sam2Area">-</span> pixels²</div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let markerImage = null;
+let markerlessImage = null;
+let markerlessBbox = null;
+let sam2Image = null;
+let sam2Mask = null;
+let canvas = null;
+let ctx = null;
+let isDrawing = false;
+let startX = 0, startY = 0;
+
+function switchTab(tabName) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+  
+  if(tabName === 'marker') {
+    document.querySelectorAll('.tab')[0].classList.add('active');
+    document.getElementById('markerTab').classList.add('active');
+  } else if(tabName === 'markerless') {
+    document.querySelectorAll('.tab')[1].classList.add('active');
+    document.getElementById('markerlessTab').classList.add('active');
+  } else {
+    document.querySelectorAll('.tab')[2].classList.add('active');
+    document.getElementById('sam2Tab').classList.add('active');
+  }
+}
+
+function handleMarkerUpload(e) {
+  const f = e.target.files[0];
+  if(!f) return;
+  const r = new FileReader();
+  r.onload = (ev) => {
+    markerImage = ev.target.result;
+    document.getElementById('markerBtn').disabled = false;
+    document.getElementById('markerResults').style.display = 'none';
+  };
+  r.readAsDataURL(f);
+}
+
+function handleMarkerlessUpload(e) {
+  const f = e.target.files[0];
+  if(!f) return;
+  const r = new FileReader();
+  r.onload = (ev) => {
+    markerlessImage = ev.target.result;
+    setupBboxSelector(ev.target.result);
+    document.getElementById('markerlessResults').style.display = 'none';
+  };
+  r.readAsDataURL(f);
+}
+
+function setupBboxSelector(imageSrc) {
+  const canvas = document.getElementById('imageCanvas');
+  const ctx = canvas.getContext('2d');
+  const img = new Image();
+  
+  img.onload = function() {
+    canvas.width = Math.min(img.width, 800);
+    canvas.height = (img.height / img.width) * canvas.width;
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    document.getElementById('bboxSelector').style.display = 'block';
+  };
+  
+  img.src = imageSrc;
+  
+  // Drawing logic
+  canvas.onmousedown = (e) => {
+    isDrawing = true;
+    const rect = canvas.getBoundingClientRect();
+    startX = e.clientX - rect.left;
+    startY = e.clientY - rect.top;
+  };
+  
+  canvas.onmousemove = (e) => {
+    if(!isDrawing) return;
+    const rect = canvas.getBoundingClientRect();
+    const currentX = e.clientX - rect.left;
+    const currentY = e.clientY - rect.top;
+    
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    ctx.strokeStyle = '#00ff00';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(startX, startY, currentX - startX, currentY - startY);
+  };
+  
+  canvas.onmouseup = (e) => {
+    if(!isDrawing) return;
+    isDrawing = false;
+    const rect = canvas.getBoundingClientRect();
+    const endX = e.clientX - rect.left;
+    const endY = e.clientY - rect.top;
+    
+    const x = Math.min(startX, endX);
+    const y = Math.min(startY, endY);
+    const w = Math.abs(endX - startX);
+    const h = Math.abs(endY - startY);
+    
+    if(w > 10 && h > 10) {
+      // Scale back to original image dimensions
+      const scaleX = img.width / canvas.width;
+      const scaleY = img.height / canvas.height;
+      markerlessBbox = [x * scaleX, y * scaleY, w * scaleX, h * scaleY];
+      document.getElementById('bboxInfo').innerText = `Selected: (${Math.round(x)}, ${Math.round(y)}) ${Math.round(w)}×${Math.round(h)}`;
+      document.getElementById('markerlessBtn').disabled = false;
+    }
+  };
+}
+
+function handleSAM2ImageUpload(e) {
+  const f = e.target.files[0];
+  if(!f) return;
+  const r = new FileReader();
+  r.onload = (ev) => {
+    sam2Image = ev.target.result;
+    checkSAM2Ready();
+  };
+  r.readAsDataURL(f);
+}
+
+function handleSAM2MaskUpload(e) {
+  const f = e.target.files[0];
+  if(!f) return;
+  const r = new FileReader();
+  r.onload = (ev) => {
+    sam2Mask = ev.target.result;
+    checkSAM2Ready();
+  };
+  r.readAsDataURL(f);
+}
+
+function checkSAM2Ready() {
+  if(sam2Image && sam2Mask) {
+    document.getElementById('sam2Btn').disabled = false;
+  }
+}
+
+async function trackMarker() {
+  try {
+    const markerType = document.querySelector('input[name="markerType"]:checked').value;
+    const resp = await fetch('/module5/api/track_marker', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ 
+        image: markerImage,
+        marker_type: markerType
+      })
+    });
+    const res = await resp.json();
+    if(res.success) {
+      document.getElementById('markerOriginalImg').src = res.original_image;
+      document.getElementById('markerTrackedImg').src = res.tracked_image;
+      document.getElementById('markerCount').innerText = res.markers_detected;
+      document.getElementById('markerBox').innerText = res.tracking_box ? res.tracking_box.join(', ') : 'N/A';
+      document.getElementById('markerCenter').innerText = res.center ? res.center.join(', ') : 'N/A';
+      document.getElementById('markerResults').style.display = 'block';
+    } else {
+      alert('Error: ' + (res.error || 'Tracking failed'));
+    }
+  } catch(err) {
+    alert('Error: ' + err.message);
+  }
+}
+
+async function trackMarkerless() {
+  if(!markerlessBbox) {
+    alert('Please select a bounding box first');
+    return;
+  }
+  
+  try {
+    const method = document.querySelector('input[name="trackMethod"]:checked').value;
+    const resp = await fetch('/module5/api/track_markerless', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ 
+        image: markerlessImage,
+        bbox: markerlessBbox,
+        method: method
+      })
+    });
+    const res = await resp.json();
+    if(res.success) {
+      document.getElementById('markerlessOriginalImg').src = res.original_image;
+      document.getElementById('markerlessTrackedImg').src = res.tracked_image;
+      document.getElementById('trackMethod').innerText = res.tracking_method.toUpperCase();
+      document.getElementById('markerlessBox').innerText = res.tracking_box ? res.tracking_box.join(', ') : 'N/A';
+      document.getElementById('markerlessCenter').innerText = res.center ? res.center.join(', ') : 'N/A';
+      document.getElementById('trackStatus').innerText = res.tracking_success ? 'Success' : 'Failed';
+      document.getElementById('markerlessResults').style.display = 'block';
+    } else {
+      alert('Error: ' + (res.error || 'Tracking failed'));
+    }
+  } catch(err) {
+    alert('Error: ' + err.message);
+  }
+}
+
+async function trackSAM2() {
+  try {
+    const resp = await fetch('/module5/api/track_sam2', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ 
+        image: sam2Image,
+        sam2_mask: sam2Mask
+      })
+    });
+    const res = await resp.json();
+    if(res.success) {
+      document.getElementById('sam2OriginalImg').src = res.original_image;
+      document.getElementById('sam2TrackedImg').src = res.tracked_image;
+      if(res.tracked_overlay) {
+        document.getElementById('sam2OverlayImg').src = res.tracked_overlay;
+      }
+      document.getElementById('sam2Box').innerText = res.tracking_box ? res.tracking_box.join(', ') : 'N/A';
+      document.getElementById('sam2Center').innerText = res.center ? res.center.join(', ') : 'N/A';
+      document.getElementById('sam2Area').innerText = res.contour_area ? res.contour_area.toFixed(2) : 'N/A';
+      document.getElementById('sam2Results').style.display = 'block';
+    } else {
+      alert('Error: ' + (res.error || 'Tracking failed'));
+    }
+  } catch(err) {
+    alert('Error: ' + err.message);
+  }
+}
+
+function resetMarker() {
+  markerImage = null;
+  document.getElementById('markerInput').value = '';
+  document.getElementById('markerResults').style.display = 'none';
+  document.getElementById('markerBtn').disabled = true;
+}
+
+function resetMarkerless() {
+  markerlessImage = null;
+  markerlessBbox = null;
+  document.getElementById('markerlessInput').value = '';
+  document.getElementById('bboxSelector').style.display = 'none';
+  document.getElementById('markerlessResults').style.display = 'none';
+  document.getElementById('markerlessBtn').disabled = true;
+}
+
+function resetSAM2() {
+  sam2Image = null;
+  sam2Mask = null;
+  document.getElementById('sam2ImageInput').value = '';
+  document.getElementById('sam2MaskInput').value = '';
+  document.getElementById('sam2Results').style.display = 'none';
+  document.getElementById('sam2Btn').disabled = true;
+}
+</script>
+{% endblock %}
+

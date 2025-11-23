@@ -1,0 +1,189 @@
+"""
+Module Template: Copy this structure for new modules (Module 3-7)
+
+Directory Structure:
+modules/moduleX/
+├── __init__.py           # Exposes blueprint
+├── routes.py            # URL routes and endpoints
+├── handlers.py          # Business logic
+├── templates/           # Module-specific templates
+│   ├── moduleX_home.html
+│   ├── problem1.html
+│   ├── problem2.html
+│   └── ...
+└── assets/              # Module-specific assets (optional)
+    ├── templates/
+    ├── models/
+    └── data/
+
+=============================================================================
+FILE: modules/moduleX/__init__.py
+=============================================================================
+"""
+Module X: [Module Name]
+[Brief description]
+"""
+
+from .routes import moduleX_bp
+
+__all__ = ['moduleX_bp']
+
+=============================================================================
+FILE: modules/moduleX/routes.py
+=============================================================================
+"""
+Module X: [Module Name]
+Routes and blueprint definition
+"""
+
+from flask import Blueprint, render_template, request, jsonify
+from core.decorators import login_required
+from .handlers import (
+    # Import your handler functions here
+    problem1_handler,
+    problem2_handler,
+)
+
+# Create blueprint
+moduleX_bp = Blueprint(
+    'moduleX',
+    __name__,
+    template_folder='templates',
+    url_prefix='/moduleX'
+)
+
+@moduleX_bp.route('/')
+@login_required
+def home():
+    """Module X home page - problem selection"""
+    return render_template('moduleX/moduleX_home.html')
+
+@moduleX_bp.route('/problem1')
+@login_required
+def problem1():
+    """Problem 1: [Description]"""
+    return render_template('moduleX/problem1.html')
+
+@moduleX_bp.route('/problem2')
+@login_required
+def problem2():
+    """Problem 2: [Description]"""
+    return render_template('moduleX/problem2.html')
+
+# API Routes
+@moduleX_bp.route('/api/problem1', methods=['POST'])
+@login_required
+def api_problem1():
+    """
+    API endpoint for problem 1
+    Expects JSON with: [parameters]
+    """
+    try:
+        data = request.json
+        result = problem1_handler(
+            # Pass required parameters
+            param1=data.get('param1'),
+            param2=data.get('param2')
+        )
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@moduleX_bp.route('/api/problem2', methods=['POST'])
+@login_required
+def api_problem2():
+    """
+    API endpoint for problem 2
+    Expects JSON with: [parameters]
+    """
+    try:
+        data = request.json
+        result = problem2_handler(
+            # Pass required parameters
+            param1=data.get('param1')
+        )
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+=============================================================================
+FILE: modules/moduleX/handlers.py
+=============================================================================
+"""
+Module X: Business logic handlers
+[Description of what this module does]
+"""
+
+import cv2
+import numpy as np
+from core.utils import decode_base64_image, encode_image_to_base64
+
+def problem1_handler(param1, param2):
+    """
+    Handler for Problem 1
+    
+    Args:
+        param1: Description
+        param2: Description
+        
+    Returns:
+        Dictionary with success status and results
+    """
+    try:
+        # Your implementation here
+        
+        return {
+            'success': True,
+            'result': 'data'
+        }
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
+def problem2_handler(param1):
+    """
+    Handler for Problem 2
+    
+    Args:
+        param1: Description
+        
+    Returns:
+        Dictionary with success status and results
+    """
+    try:
+        # Your implementation here
+        
+        return {
+            'success': True,
+            'result': 'data'
+        }
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
+=============================================================================
+STEPS TO ADD NEW MODULE:
+=============================================================================
+
+1. Copy the template structure to modules/moduleX/
+2. Replace 'X' with your module number (3, 4, 5, 6, or 7)
+3. Implement your handlers in handlers.py
+4. Create templates in templates/ directory
+5. Register blueprint in app_refactored.py:
+   
+   In register_modules() function, add:
+   from modules.moduleX import moduleX_bp
+   app.register_blueprint(moduleX_bp)
+
+6. Update templates/modules.html to add a card for your new module
+
+=============================================================================
+NAMING CONVENTIONS:
+=============================================================================
+
+- Blueprint name: 'moduleX' (lowercase)
+- URL prefix: '/moduleX'
+- Template folder: templates/moduleX/
+- Files: moduleX_home.html, problem1.html, problem2.html, etc.
+- Functions: snake_case (problem1_handler, calculate_result, etc.)
+- API endpoints: /moduleX/api/problem_name
+
+"""

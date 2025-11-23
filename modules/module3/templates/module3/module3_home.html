@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block title %}Module 3 - Home{% endblock %}
+{% block header %}Module 3 - Image Processing and Segmentation{% endblock %}
+{% block subheader %}Select a Problem{% endblock %}
+
+{% block styles %}
+<style>
+  .main-container { max-width: 1000px; margin: 0 auto; }
+  .breadcrumb { margin-bottom: 30px; color: #666; }
+  .breadcrumb a { color: #667eea; text-decoration: none; }
+  .breadcrumb a:hover { text-decoration: underline; }
+  .module-info { background: #f8f9fa; padding: 25px; border-radius: 10px; margin-bottom: 40px; }
+  .module-info h3 { color: #667eea; margin-bottom: 15px; }
+  .module-info p { color: #666; line-height: 1.8; }
+  .problems-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 25px; margin-top: 30px; }
+  .problem-card { background: white; border: 3px solid #667eea; padding: 30px; border-radius: 15px; box-shadow: 0 5px 20px rgba(0,0,0,0.1); transition: all 0.3s; cursor: pointer; }
+  .problem-card:hover { transform: translateY(-5px); box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3); border-color: #764ba2; }
+  .problem-icon { font-size: 2.5em; margin-bottom: 15px; }
+  .problem-card h3 { color: #667eea; margin-bottom: 12px; font-size: 1.4em; }
+  .problem-card .method { background: #e8f5e9; color: #2e7d32; padding: 6px 12px; border-radius: 20px; display: inline-block; margin-bottom: 12px; font-weight: 600; font-size: 0.9em; }
+  .problem-card p { color: #666; line-height: 1.6; margin: 8px 0; font-size: 0.95em; }
+  .problem-card ul { list-style: none; padding: 0; margin-top: 12px; }
+  .problem-card ul li { padding: 4px 0; color: #666; font-size: 0.9em; }
+  .problem-card ul li:before { content: "✓ "; color: #28a745; font-weight: bold; margin-right: 5px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="main-container">
+  <div class="breadcrumb">
+    <a href="/modules">← Back to All Modules</a> / Module 3
+  </div>
+
+  <div class="module-info">
+    <h3>About Module 3</h3>
+    <p>Image processing techniques including gradient computation, edge/corner detection, object boundary detection, and segmentation using ArUco markers. Compare results with SAM2 segmentation model.</p>
+  </div>
+
+  <h2 style="text-align: center; margin-bottom: 30px;">Select a Problem</h2>
+
+  <div class="problems-grid">
+    <div class="problem-card" onclick="goToProblem(1)">
+      <div class="problem-icon">📊</div>
+      <h3>Problem 1</h3>
+      <div class="method">Gradient & LoG</div>
+      <p>Compute gradient magnitude, gradient angle, and Laplacian of Gaussian filtered images.</p>
+      <ul>
+        <li>Gradient magnitude visualization</li>
+        <li>Gradient angle (color-coded)</li>
+        <li>Laplacian of Gaussian</li>
+        <li>Compare all results</li>
+      </ul>
+    </div>
+
+    <div class="problem-card" onclick="goToProblem(2)">
+      <div class="problem-icon">🔍</div>
+      <h3>Problem 2</h3>
+      <div class="method">Edge & Corner Detection</div>
+      <p>Detect edges and corners in images using simple algorithms based on gradient analysis.</p>
+      <ul>
+        <li>Edge detection (Canny)</li>
+        <li>Corner detection (Harris)</li>
+        <li>Visualize results</li>
+        <li>Adjustable parameters</li>
+      </ul>
+    </div>
+
+    <div class="problem-card" onclick="goToProblem(3)">
+      <div class="problem-icon">📐</div>
+      <h3>Problem 3</h3>
+      <div class="method">Boundary Detection</div>
+      <p>Find exact boundaries of objects using OpenCV contour detection and watershed algorithms.</p>
+      <ul>
+        <li>Contour-based detection</li>
+        <li>Watershed algorithm</li>
+        <li>Boundary visualization</li>
+        <li>Area & perimeter metrics</li>
+      </ul>
+    </div>
+
+    <div class="problem-card" onclick="goToProblem(4)">
+      <div class="problem-icon">🎯</div>
+      <h3>Problem 4</h3>
+      <div class="method">ArUco Segmentation</div>
+      <p>Segment non-rectangular objects using ArUco markers placed on object boundaries.</p>
+      <ul>
+        <li>ArUco marker detection</li>
+        <li>Convex hull boundary</li>
+        <li>Object segmentation</li>
+        <li>Works with 10+ images</li>
+      </ul>
+    </div>
+
+    <div class="problem-card" onclick="goToProblem(5)">
+      <div class="problem-icon">⚖️</div>
+      <h3>Problem 5</h3>
+      <div class="method">SAM2 Comparison</div>
+      <p>Compare ArUco marker segmentation results with SAM2 model segmentation output.</p>
+      <ul>
+        <li>Upload SAM2 result</li>
+        <li>Side-by-side comparison</li>
+        <li>Visual analysis</li>
+        <li>Performance metrics</li>
+      </ul>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function goToProblem(problemNum) {
+  window.location.href = '/module3/problem' + problemNum;
+}
+</script>
+{% endblock %}
+

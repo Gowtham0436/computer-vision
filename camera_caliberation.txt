@@ -1,0 +1,41 @@
+image_width:  4284
+image_height: 5712
+
+camera_matrix:
+  fx: 4024.75034000
+  fy: 4021.56657000
+  cx: 2132.83332000
+  cy: 2880.51288000
+  skew: 0.0
+
+distortion_model: plumb_bob   # (Brown–Conrady, 5 params)
+distortion_coefficients:
+  k1:  0.15528104
+  k2: -0.12212795
+  p1: -0.00111904
+  p2: -0.00032639
+  k3: -1.38038364
+
+reprojection_error_mean_px: 0.192257
+rms_opencv: 2.768938
+
+{
+  "camera": "iPhone 17 pro",
+  "platform": "Macintosh; Intel Mac OS X 10_15_7",
+  "avg_reprojection_error": 0.192257,
+  "camera_matrix": [
+    [4024.75034, 0.0, 2132.83332],
+    [0.0, 4021.56657, 2880.51288],
+    [0.0, 0.0, 1.0]
+  ],
+  "distortion_coefficients": [
+    0.15528104,
+    -0.12212795,
+    -0.00111904,
+    -0.00032639,
+    -1.38038364
+  ],
+  "distortion_model": "rectilinear",
+  "img_size": [4284, 5712],
+  "calibration_time": "Thu, 25 Sep 2025 00:00:00 GMT"
+}

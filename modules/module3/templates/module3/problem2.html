@@ -1,0 +1,210 @@
+{% extends "base.html" %}
+{% block title %}Module 3 - Problem 2{% endblock %}
+{% block header %}Module 3 - Problem 2{% endblock %}
+{% block subheader %}Edge and Corner Detection{% endblock %}
+
+{% block styles %}
+<style>
+  .main-container { max-width: 1200px; margin: 0 auto; }
+  .upload-section { text-align: center; margin-bottom: 30px; }
+  .upload-box { border: 3px dashed #667eea; border-radius: 10px; padding: 40px; cursor: pointer; transition: background 0.3s; display: inline-block; }
+  .upload-box:hover { background: #f8f9fa; }
+  .image-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin: 30px 0; }
+  .image-card { background: white; padding: 15px; border-radius: 10px; box-shadow: 0 3px 10px rgba(0,0,0,0.1); }
+  .image-card h4 { margin: 0 0 10px 0; color: #667eea; }
+  canvas, img { 
+    max-width: 100%; 
+    max-height: 400px; 
+    width: auto; 
+    height: auto; 
+    border-radius: 8px; 
+    box-shadow: 0 3px 10px rgba(0,0,0,0.2); 
+    display: block; 
+    margin: 0 auto; 
+    image-rendering: -webkit-optimize-contrast;
+    image-rendering: auto;
+  }
+  .params-section { background: #f8f9fa; padding: 20px; border-radius: 10px; margin: 20px 0; }
+  .param-group { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-top: 15px; }
+  .param-item label { display: block; margin-bottom: 5px; font-weight: 500; }
+  .param-item input { width: 100%; padding: 8px; border: 2px solid #ddd; border-radius: 5px; }
+  .results-section { background: #e8f5e9; padding: 20px; border-radius: 10px; margin-top: 20px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="main-container">
+  <div style="margin-bottom: 20px;">
+    <a href="/module3" class="btn">← Back to Module 3</a>
+    <a href="/modules" class="btn">All Modules</a>
+  </div>
+
+  <h2>Problem 2: Edge and Corner Detection</h2>
+  <ol style="line-height: 1.8; margin-bottom: 20px;">
+    <li>Upload an image from your dataset</li>
+    <li>Adjust parameters (optional) for edge and corner detection</li>
+    <li>Click <strong>Detect Edges</strong> or <strong>Detect Corners</strong> to see results</li>
+    <li>Compare original with detected features</li>
+  </ol>
+
+  <div class="upload-section">
+    <div class="upload-box" onclick="document.getElementById('imageInput').click()">
+      <h3>📤 Upload Image</h3>
+      <p>JPG / PNG / JPEG</p>
+      <input type="file" id="imageInput" accept="image/*" style="display:none" onchange="handleFileUpload(event)">
+    </div>
+  </div>
+
+  <div class="params-section">
+    <h3>Detection Parameters</h3>
+    <div class="param-group">
+      <div class="param-item">
+        <label>Edge Threshold 1 (Canny)</label>
+        <input type="number" id="threshold1" value="50" min="0" max="255">
+      </div>
+      <div class="param-item">
+        <label>Edge Threshold 2 (Canny)</label>
+        <input type="number" id="threshold2" value="150" min="0" max="255">
+      </div>
+      <div class="param-item">
+        <label>Max Corners</label>
+        <input type="number" id="maxCorners" value="100" min="1" max="500">
+      </div>
+      <div class="param-item">
+        <label>Corner Quality</label>
+        <input type="number" id="quality" value="0.01" min="0.001" max="0.1" step="0.001">
+      </div>
+    </div>
+  </div>
+
+  <div style="text-align:center; margin: 20px 0;">
+    <button id="edgeBtn" class="btn btn-success" onclick="detectEdges()" disabled>Detect Edges</button>
+    <button id="cornerBtn" class="btn btn-success" onclick="detectCorners()" disabled>Detect Corners</button>
+    <button class="btn btn-secondary" onclick="resetAll()">Reset All</button>
+  </div>
+
+  <div id="edgeResults" style="display:none;">
+    <h3>Edge Detection Results</h3>
+    <div class="image-grid">
+      <div class="image-card">
+        <h4>Original Image</h4>
+        <img id="edgeOriginalImg" alt="Original">
+      </div>
+      <div class="image-card">
+        <h4>Detected Edges</h4>
+        <img id="edgesImg" alt="Edges">
+      </div>
+      <div class="image-card">
+        <h4>Edges Overlay</h4>
+        <img id="edgesOverlayImg" alt="Edges Overlay">
+      </div>
+    </div>
+    <div class="results-section">
+      <div><strong>Edge Pixels Detected:</strong> <span id="edgeCount">0</span></div>
+    </div>
+  </div>
+
+  <div id="cornerResults" style="display:none;">
+    <h3>Corner Detection Results</h3>
+    <div class="image-grid">
+      <div class="image-card">
+        <h4>Original Image</h4>
+        <img id="cornerOriginalImg" alt="Original">
+      </div>
+      <div class="image-card">
+        <h4>Detected Corners</h4>
+        <img id="cornersImg" alt="Corners">
+      </div>
+    </div>
+    <div class="results-section">
+      <div><strong>Corners Detected:</strong> <span id="cornerCount">0</span></div>
+      <div><strong>Harris Corners:</strong> <span id="harrisCount">0</span></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let uploadedImage = null;
+
+function handleFileUpload(e) {
+  const f = e.target.files[0];
+  if(!f) return;
+  const r = new FileReader();
+  r.onload = (ev) => {
+    uploadedImage = ev.target.result;
+    document.getElementById('edgeBtn').disabled = false;
+    document.getElementById('cornerBtn').disabled = false;
+    document.getElementById('edgeResults').style.display = 'none';
+    document.getElementById('cornerResults').style.display = 'none';
+  };
+  r.readAsDataURL(f);
+}
+
+async function detectEdges() {
+  try {
+    const resp = await fetch('/module3/api/detect_edges', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ 
+        image: uploadedImage,
+        threshold1: parseInt(document.getElementById('threshold1').value),
+        threshold2: parseInt(document.getElementById('threshold2').value)
+      })
+    });
+    const res = await resp.json();
+    if(res.success) {
+      document.getElementById('edgeOriginalImg').src = res.original_image;
+      document.getElementById('edgesImg').src = res.edges;
+      document.getElementById('edgesOverlayImg').src = res.edges_overlay;
+      document.getElementById('edgeCount').innerText = res.edge_count.toLocaleString();
+      document.getElementById('edgeResults').style.display = 'block';
+    } else {
+      alert('Error: ' + (res.error || 'Edge detection failed'));
+    }
+  } catch(err) {
+    alert('Error: ' + err.message);
+  }
+}
+
+async function detectCorners() {
+  try {
+    const resp = await fetch('/module3/api/detect_corners', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ 
+        image: uploadedImage,
+        max_corners: parseInt(document.getElementById('maxCorners').value),
+        quality: parseFloat(document.getElementById('quality').value),
+        min_distance: 10
+      })
+    });
+    const res = await resp.json();
+    if(res.success) {
+      document.getElementById('cornerOriginalImg').src = res.original_image;
+      document.getElementById('cornersImg').src = res.corners_visualization;
+      document.getElementById('cornerCount').innerText = res.corner_count;
+      document.getElementById('harrisCount').innerText = res.harris_corners;
+      document.getElementById('cornerResults').style.display = 'block';
+    } else {
+      alert('Error: ' + (res.error || 'Corner detection failed'));
+    }
+  } catch(err) {
+    alert('Error: ' + err.message);
+  }
+}
+
+function resetAll() {
+  if(confirm('Reset everything and start over?')) {
+    uploadedImage = null;
+    document.getElementById('imageInput').value = '';
+    document.getElementById('edgeResults').style.display = 'none';
+    document.getElementById('cornerResults').style.display = 'none';
+    document.getElementById('edgeBtn').disabled = true;
+    document.getElementById('cornerBtn').disabled = true;
+  }
+}
+</script>
+{% endblock %}
+

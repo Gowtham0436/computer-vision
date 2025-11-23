@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% block title %}Module 3 - Problem 4{% endblock %}
+{% block header %}Module 3 - Problem 4{% endblock %}
+{% block subheader %}ArUco Marker Segmentation{% endblock %}
+
+{% block styles %}
+<style>
+  .main-container { max-width: 1200px; margin: 0 auto; }
+  .upload-section { text-align: center; margin-bottom: 30px; }
+  .upload-box { border: 3px dashed #667eea; border-radius: 10px; padding: 40px; cursor: pointer; transition: background 0.3s; display: inline-block; }
+  .upload-box:hover { background: #f8f9fa; }
+  .image-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin: 30px 0; }
+  .image-card { background: white; padding: 15px; border-radius: 10px; box-shadow: 0 3px 10px rgba(0,0,0,0.1); }
+  .image-card h4 { margin: 0 0 10px 0; color: #667eea; }
+  canvas, img { 
+    max-width: 100%; 
+    max-height: 400px; 
+    width: auto; 
+    height: auto; 
+    border-radius: 8px; 
+    box-shadow: 0 3px 10px rgba(0,0,0,0.2); 
+    display: block; 
+    margin: 0 auto; 
+    image-rendering: -webkit-optimize-contrast;
+    image-rendering: auto;
+  }
+  .info-box { background: #e3f2fd; padding: 15px; border-radius: 10px; margin: 20px 0; border-left: 4px solid #2196F3; }
+  .results-section { background: #e8f5e9; padding: 20px; border-radius: 10px; margin-top: 20px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="main-container">
+  <div style="margin-bottom: 20px;">
+    <a href="/module3" class="btn">← Back to Module 3</a>
+    <a href="/modules" class="btn">All Modules</a>
+  </div>
+
+  <h2>Problem 4: ArUco Marker Segmentation</h2>
+  <ol style="line-height: 1.8; margin-bottom: 20px;">
+    <li>Place ArUco markers on the boundary of a non-rectangular object</li>
+    <li>Capture image from various distances and angles (use at least 10 images)</li>
+    <li>Upload image with visible ArUco markers</li>
+    <li>Click <strong>Segment Object</strong> to detect markers and segment the object</li>
+  </ol>
+
+  <div class="info-box">
+    <h3 style="margin-top: 0; color: #1976D2;">📋 ArUco Marker Guidelines</h3>
+    <ul style="text-align: left; line-height: 1.8;">
+      <li>Use <strong>6x6 ArUco markers</strong> (DICT_6X6_250)</li>
+      <li>Place markers on the <strong>boundary/edges</strong> of the object</li>
+      <li>Ensure markers are <strong>clearly visible</strong> and not occluded</li>
+      <li>Use at least <strong>3-4 markers</strong> for good boundary detection</li>
+      <li>Test with images from <strong>different angles and distances</strong></li>
+      <li>Markers should be <strong>well-lit</strong> and in focus</li>
+    </ul>
+  </div>
+
+  <div class="upload-section">
+    <div class="upload-box" onclick="document.getElementById('imageInput').click()">
+      <h3>📤 Upload Image with ArUco Markers</h3>
+      <p>JPG / PNG / JPEG</p>
+      <input type="file" id="imageInput" accept="image/*" style="display:none" onchange="handleFileUpload(event)">
+    </div>
+  </div>
+
+  <div style="text-align:center; margin: 20px 0;">
+    <button id="segmentBtn" class="btn btn-success" onclick="segmentObject()" disabled>Segment Object</button>
+    <button class="btn btn-secondary" onclick="resetAll()">Reset All</button>
+  </div>
+
+  <div id="resultsSection" style="display:none;">
+    <h3>Segmentation Results</h3>
+    <div class="image-grid">
+      <div class="image-card">
+        <h4>Original Image</h4>
+        <img id="originalImg" alt="Original">
+      </div>
+      <div class="image-card">
+        <h4>Markers Detected</h4>
+        <img id="markersImg" alt="Markers">
+      </div>
+      <div class="image-card">
+        <h4>Segmented Object</h4>
+        <img id="segmentedImg" alt="Segmented">
+      </div>
+      <div class="image-card">
+        <h4>Segmentation Overlay</h4>
+        <img id="overlayImg" alt="Overlay">
+      </div>
+    </div>
+    <div class="results-section">
+      <div><strong>ArUco Markers Detected:</strong> <span id="markerCount">0</span></div>
+      <div><strong>Segmented Area:</strong> <span id="area">0</span> pixels²</div>
+      <div><strong>Boundary Perimeter:</strong> <span id="perimeter">0</span> pixels</div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let uploadedImage = null;
+
+function handleFileUpload(e) {
+  const f = e.target.files[0];
+  if(!f) return;
+  const r = new FileReader();
+  r.onload = (ev) => {
+    uploadedImage = ev.target.result;
+    document.getElementById('segmentBtn').disabled = false;
+    document.getElementById('resultsSection').style.display = 'none';
+  };
+  r.readAsDataURL(f);
+}
+
+async function segmentObject() {
+  try {
+    const resp = await fetch('/module3/api/segment_aruco', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ image: uploadedImage })
+    });
+    const res = await resp.json();
+    if(res.success) {
+      document.getElementById('originalImg').src = res.original_image;
+      document.getElementById('markersImg').src = res.markers_detected;
+      document.getElementById('segmentedImg').src = res.segmented;
+      document.getElementById('overlayImg').src = res.segmented_overlay;
+      document.getElementById('markerCount').innerText = res.marker_count;
+      document.getElementById('area').innerText = res.area ? res.area.toFixed(2) : 'N/A';
+      document.getElementById('perimeter').innerText = res.perimeter ? res.perimeter.toFixed(2) : 'N/A';
+      document.getElementById('resultsSection').style.display = 'block';
+    } else {
+      alert('Error: ' + (res.error || 'Segmentation failed'));
+    }
+  } catch(err) {
+    alert('Error: ' + err.message);
+  }
+}
+
+function resetAll() {
+  if(confirm('Reset everything and start over?')) {
+    uploadedImage = null;
+    document.getElementById('imageInput').value = '';
+    document.getElementById('resultsSection').style.display = 'none';
+    document.getElementById('segmentBtn').disabled = true;
+  }
+}
+</script>
+{% endblock %}
+

@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+{% block title %}Module 7 - Problem 2{% endblock %}
+{% block header %}Module 7 - Problem 2{% endblock %}
+{% block subheader %}Uncalibrated Stereo Size Estimation Derivation{% endblock %}
+
+{% block styles %}
+<style>
+  .main-container { max-width: 1200px; margin: 0 auto; }
+  .derivation-section { background: white; padding: 25px; border-radius: 10px; margin: 20px 0; box-shadow: 0 3px 10px rgba(0,0,0,0.1); }
+  .derivation-section h3 { color: #667eea; margin-bottom: 15px; }
+  .math-formula { background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 15px 0; font-family: 'Courier New', monospace; border-left: 4px solid #667eea; white-space: pre-wrap; }
+  .info-box { background: #fff3cd; padding: 15px; border-radius: 10px; margin: 20px 0; border-left: 4px solid #ffc107; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="main-container">
+  <div style="margin-bottom: 20px;">
+    <a href="/module7" class="btn">← Back to Module 7</a>
+    <a href="/modules" class="btn">All Modules</a>
+  </div>
+
+  <h2>Problem 2: Uncalibrated Stereo Size Estimation Derivation</h2>
+  <p style="color: #666; margin-bottom: 30px;">
+    This problem requires showing all calculations and derivations for estimating object size using uncalibrated stereo vision.
+    The derivation is shown below with step-by-step mathematical formulations.
+  </p>
+
+  <div class="info-box">
+    <h3 style="margin-top: 0; color: #856404;">⚠️ Note</h3>
+    <p style="margin: 0; line-height: 1.8;">
+      This derivation must be done by hand (not typed). The mathematical formulations below serve as a reference.
+      For submission, provide scanned handwritten derivations showing all steps.
+    </p>
+  </div>
+
+  <!-- Epipolar Geometry -->
+  <div class="derivation-section">
+    <h3>1. Epipolar Geometry Fundamentals</h3>
+    <p>In uncalibrated stereo, we don't know the camera parameters. We use epipolar geometry to relate corresponding points.</p>
+    
+    <p><strong>Epipolar Constraint:</strong></p>
+    <div class="math-formula">x'ᵀ F x = 0</div>
+    
+    <p>where:</p>
+    <ul style="line-height: 1.8;">
+      <li>x and x' are corresponding points in left and right images (homogeneous coordinates)</li>
+      <li>F is the Fundamental Matrix (3×3)</li>
+    </ul>
+  </div>
+
+  <!-- Fundamental Matrix -->
+  <div class="derivation-section">
+    <h3>2. Fundamental Matrix Estimation</h3>
+    <p><strong>Step 1: Find Corresponding Points</strong></p>
+    <p>Detect and match feature points between left and right images using SIFT, ORB, or similar methods.</p>
+    
+    <p><strong>Step 2: Estimate Fundamental Matrix</strong></p>
+    <p>Given n corresponding point pairs (xᵢ, x'ᵢ), we solve:</p>
+    
+    <div class="math-formula">x'ᵢᵀ F xᵢ = 0  for i = 1, 2, ..., n</div>
+    
+    <p>Expanding this constraint for a point pair:</p>
+    
+    <div class="math-formula">[x' y' 1] [f₁₁ f₁₂ f₁₃] [x]
+                              [f₂₁ f₂₂ f₂₃] [y] = 0
+                              [f₃₁ f₃₂ f₃₃] [1]</div>
+    
+    <p>This gives us a linear equation in the 9 elements of F. With at least 8 point correspondences, we can solve for F using the 8-point algorithm or RANSAC for robustness.</p>
+  </div>
+
+  <!-- Essential Matrix -->
+  <div class="derivation-section">
+    <h3>3. Essential Matrix and Camera Motion</h3>
+    <p>If we have camera calibration (K, K'), we can compute the Essential Matrix:</p>
+    
+    <div class="math-formula">E = K'ᵀ F K</div>
+    
+    <p>For uncalibrated case, we work directly with F. The Essential Matrix relates to camera motion:</p>
+    
+    <div class="math-formula">E = [t]× R</div>
+    
+    <p>where:</p>
+    <ul style="line-height: 1.8;">
+      <li>R is the rotation matrix between cameras</li>
+      <li>t is the translation vector (baseline direction)</li>
+      <li>[t]× is the skew-symmetric matrix of t</li>
+    </ul>
+  </div>
+
+  <!-- Triangulation -->
+  <div class="derivation-section">
+    <h3>4. 3D Point Reconstruction (Triangulation)</h3>
+    <p><strong>Step 1: Find Corresponding Points</strong></p>
+    <p>For a point x in left image, find corresponding point x' in right image using epipolar constraint.</p>
+    
+    <p><strong>Step 2: Triangulate 3D Point</strong></p>
+    <p>Given camera projection matrices P and P' (unknown in uncalibrated case), we have:</p>
+    
+    <div class="math-formula">x = P X
+x' = P' X</div>
+    
+    <p>where X is the 3D point. In uncalibrated stereo, we can only recover X up to a projective transformation.</p>
+    
+    <p><strong>Linear Triangulation:</strong></p>
+    <p>For each corresponding pair (x, x'), we solve:</p>
+    
+    <div class="math-formula">[x × (P X)] = 0
+[x' × (P' X)] = 0</div>
+    
+    <p>This gives us 4 linear equations in 4 unknowns (homogeneous coordinates of X).</p>
+  </div>
+
+  <!-- Size Estimation -->
+  <div class="derivation-section">
+    <h3>5. Object Size Estimation Procedure</h3>
+    <p><strong>Step 1: Recover Projective Structure</strong></p>
+    <p>Using the Fundamental Matrix and corresponding points, we can reconstruct 3D points up to a projective transformation H:</p>
+    
+    <div class="math-formula">X_projective = H X_true</div>
+    
+    <p><strong>Step 2: Identify Object Points</strong></p>
+    <p>Select points on the object boundary in both images. For rectangular objects, select 4 corner points. For circular objects, select points on the circumference.</p>
+    
+    <p><strong>Step 3: Triangulate Object Points</strong></p>
+    <p>For each corresponding point pair on the object, triangulate to get 3D coordinates (in projective space).</p>
+    
+    <p><strong>Step 4: Calculate Relative Dimensions</strong></p>
+    <p>Since we're in projective space, we can compute relative distances:</p>
+    
+    <div class="math-formula">distance = √[(X₂ - X₁)² + (Y₂ - Y₁)² + (Z₂ - Z₁)²]</div>
+    
+    <p>For rectangular objects:</p>
+    <ul style="line-height: 1.8;">
+      <li>Width = distance between left and right corner points</li>
+      <li>Height = distance between top and bottom corner points</li>
+    </ul>
+    
+    <p>For circular objects:</p>
+    <ul style="line-height: 1.8;">
+      <li>Diameter = 2 × radius, where radius = distance from center to any point on circumference</li>
+    </ul>
+    
+    <p><strong>Step 5: Scale to Real-World Units</strong></p>
+    <p>To convert from projective coordinates to real-world units, we need a reference object of known size, or we need to estimate the projective transformation H using additional constraints.</p>
+    
+    <p>If we have a reference object of known size S_ref at distance Z_ref:</p>
+    
+    <div class="math-formula">scale_factor = S_ref / S_projective_ref</div>
+    
+    <p>Then apply to all measurements:</p>
+    
+    <div class="math-formula">S_real = S_projective × scale_factor</div>
+  </div>
+
+  <!-- Complete Algorithm -->
+  <div class="derivation-section">
+    <h3>6. Complete Algorithm Summary</h3>
+    <ol style="line-height: 1.8;">
+      <li><strong>Feature Detection & Matching:</strong> Detect and match features between stereo pair</li>
+      <li><strong>Fundamental Matrix Estimation:</strong> Compute F using 8-point algorithm or RANSAC</li>
+      <li><strong>Epipolar Rectification (Optional):</strong> Rectify images to simplify matching</li>
+      <li><strong>Object Point Selection:</strong> Select corresponding points on object boundary</li>
+      <li><strong>Triangulation:</strong> Reconstruct 3D points in projective space</li>
+      <li><strong>Dimension Calculation:</strong> Compute distances between object points</li>
+      <li><strong>Scale Estimation:</strong> Use reference object or additional constraints to determine scale</li>
+      <li><strong>Real-World Size:</strong> Apply scale factor to get actual dimensions</li>
+    </ol>
+  </div>
+
+  <div class="info-box">
+    <h3 style="margin-top: 0; color: #856404;">📝 Submission Requirements</h3>
+    <p style="margin: 0; line-height: 1.8;">
+      For your report, provide handwritten derivations showing:
+      <br>• Step-by-step mathematical derivations
+      <br>• All intermediate calculations
+      <br>• Clear explanations of each step
+      <br>• Example calculations with actual numbers
+      <br><br>
+      <strong>Note:</strong> Typed versions are NOT accepted. Use scanned handwritten work.
+    </p>
+  </div>
+</div>
+{% endblock %}
+

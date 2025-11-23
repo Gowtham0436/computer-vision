@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+
+{% block title %}Module 1 - Home{% endblock %}
+{% block header %}Module 1 - Object Dimension Measurement{% endblock %}
+{% block subheader %}Select a Problem{% endblock %}
+
+{% block styles %}
+<style>
+    .main-container {
+        max-width: 1000px;
+        margin: 0 auto;
+    }
+
+    .breadcrumb {
+        margin-bottom: 30px;
+        color: #666;
+    }
+
+    .breadcrumb a {
+        color: #667eea;
+        text-decoration: none;
+    }
+
+    .breadcrumb a:hover {
+        text-decoration: underline;
+    }
+
+    .module-info {
+        background: #f8f9fa;
+        padding: 25px;
+        border-radius: 10px;
+        margin-bottom: 40px;
+    }
+
+    .module-info h3 {
+        color: #667eea;
+        margin-bottom: 15px;
+    }
+
+    .module-info p {
+        color: #666;
+        line-height: 1.8;
+    }
+
+    .problems-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+        gap: 30px;
+        margin-top: 30px;
+    }
+
+    .problem-card {
+        background: white;
+        border: 3px solid #667eea;
+        padding: 35px;
+        border-radius: 15px;
+        box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+        transition: all 0.3s;
+        cursor: pointer;
+    }
+
+    .problem-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3);
+        border-color: #764ba2;
+    }
+
+    .problem-icon {
+        font-size: 3em;
+        margin-bottom: 20px;
+    }
+
+    .problem-card h3 {
+        color: #667eea;
+        margin-bottom: 15px;
+        font-size: 1.5em;
+    }
+
+    .problem-card .method {
+        background: #e8f5e9;
+        color: #2e7d32;
+        padding: 8px 15px;
+        border-radius: 20px;
+        display: inline-block;
+        margin-bottom: 15px;
+        font-weight: 600;
+    }
+
+    .problem-card p {
+        color: #666;
+        line-height: 1.6;
+        margin: 10px 0;
+    }
+
+    .problem-card ul {
+        list-style: none;
+        padding: 0;
+        margin-top: 15px;
+    }
+
+    .problem-card ul li {
+        padding: 5px 0;
+        color: #666;
+    }
+
+    .problem-card ul li:before {
+        content: " ";
+        color: #28a745;
+        font-weight: bold;
+        margin-right: 5px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="main-container">
+    <div class="breadcrumb">
+        <a href="/modules"> Back to All Modules</a> / Module 1
+    </div>
+
+    <div class="module-info">
+        <h3>About Module 1</h3>
+        <p>This module focuses on measuring real-world dimensions of objects in images using camera calibration parameters. You can use two different methods to measure objects:</p>
+    </div>
+
+    <h2 style="text-align: center; margin-bottom: 30px;">Select a Problem</h2>
+
+    <div class="problems-grid">
+        <!-- Problem 1 -->
+        <div class="problem-card" onclick="goToProblem(1)">
+            <div class="problem-icon"></div>
+            <h3>Problem 1</h3>
+            <div class="method">ROI Selection Method</div>
+            <p><strong>How it works:</strong></p>
+            <p>Click and drag on the image to select a rectangular region around your object.</p>
+            <ul>
+                <li>Upload an image</li>
+                <li>Drag to select region</li>
+                <li>Get instant measurements</li>
+                <li>Results in mm and inches</li>
+            </ul>
+        </div>
+
+        <!-- Problem 2 -->
+        <div class="problem-card" onclick="goToProblem(2)">
+            <div class="problem-icon"></div>
+            <h3>Problem 2</h3>
+            <div class="method">Two-Point Method</div>
+            <p><strong>How it works:</strong></p>
+            <p>Click two opposite corners of the object to measure its dimensions.</p>
+            <ul>
+                <li>Upload an image</li>
+                <li>Click two corner points</li>
+                <li>Multiple measurements supported</li>
+                <li>View measurement history</li>
+            </ul>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function goToProblem(problemNum) {
+    //  Correct routing: Problem 1  module1_problem1, Problem 2  module1_problem2
+    if (problemNum === 1) {
+        window.location.href = '/module1_problem1';
+    } else if (problemNum === 2) {
+        window.location.href = '/module1_problem2';
+    }
+}
+</script>
+{% endblock %}
+ '/module1_problem2';
+    }
+}
+</script>

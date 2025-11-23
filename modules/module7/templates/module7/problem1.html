@@ -1,0 +1,252 @@
+{% extends "base.html" %}
+{% block title %}Module 7 - Problem 1{% endblock %}
+{% block header %}Module 7 - Problem 1{% endblock %}
+{% block subheader %}Calibrated Stereo Size Estimation{% endblock %}
+
+{% block styles %}
+<style>
+  .main-container { max-width: 1400px; margin: 0 auto; }
+  .upload-section { text-align: center; margin-bottom: 30px; display: flex; gap: 20px; justify-content: center; flex-wrap: wrap; }
+  .upload-box { border: 3px dashed #667eea; border-radius: 10px; padding: 30px; cursor: pointer; transition: background 0.3s; min-width: 250px; }
+  .upload-box:hover { background: #f8f9fa; }
+  .image-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin: 30px 0; }
+  .image-card { background: white; padding: 15px; border-radius: 10px; box-shadow: 0 3px 10px rgba(0,0,0,0.1); }
+  .image-card h4 { margin: 0 0 10px 0; color: #667eea; }
+  canvas, img { 
+    max-width: 100%; 
+    max-height: 500px; 
+    width: auto; 
+    height: auto; 
+    border-radius: 8px; 
+    box-shadow: 0 3px 10px rgba(0,0,0,0.2); 
+    display: block; 
+    margin: 0 auto; 
+    image-rendering: -webkit-optimize-contrast;
+    image-rendering: auto;
+  }
+  .params-section { background: #f8f9fa; padding: 20px; border-radius: 10px; margin: 20px 0; }
+  .param-group { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-top: 15px; }
+  .param-item label { display: block; margin-bottom: 5px; font-weight: 500; }
+  .param-item input { width: 100%; padding: 8px; border: 2px solid #ddd; border-radius: 5px; }
+  .results-section { background: #e8f5e9; padding: 20px; border-radius: 10px; margin-top: 20px; }
+  .info-box { background: #e3f2fd; padding: 15px; border-radius: 10px; margin: 20px 0; border-left: 4px solid #2196F3; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="main-container">
+  <div style="margin-bottom: 20px;">
+    <a href="/module7" class="btn">← Back to Module 7</a>
+    <a href="/modules" class="btn">All Modules</a>
+  </div>
+
+  <h2>Problem 1: Calibrated Stereo Size Estimation</h2>
+  <ol style="line-height: 1.8; margin-bottom: 20px;">
+    <li>Upload <strong>left and right stereo images</strong> (from stereo camera pair)</li>
+    <li>Enter camera calibration parameters (fx, fy, cx, cy, baseline)</li>
+    <li>Select object type (rectangular, circular, or polygon)</li>
+    <li>System estimates distance (Z) using stereo, then calculates object dimensions</li>
+  </ol>
+
+  <div class="info-box">
+    <h3 style="margin-top: 0; color: #1976D2;">📋 Calibrated Stereo Process</h3>
+    <p style="margin: 0; line-height: 1.8;">
+      <strong>Step 1:</strong> Compute disparity map from stereo image pair<br>
+      <strong>Step 2:</strong> Calculate distance Z using: <code>Z = (fx × baseline) / disparity</code><br>
+      <strong>Step 3:</strong> Estimate real-world dimensions using: <code>X = (x - cx) × Z / fx</code>, <code>Y = (y - cy) × Z / fy</code><br>
+      For rectangular objects: estimate width and height<br>
+      For circular objects: estimate diameter<br>
+      For polygons: estimate all edge dimensions
+    </p>
+  </div>
+
+  <div class="upload-section">
+    <div class="upload-box" onclick="document.getElementById('leftInput').click()">
+      <h4>📤 Left Image</h4>
+      <p>Left stereo camera</p>
+      <input type="file" id="leftInput" accept="image/*" style="display:none" onchange="handleLeftUpload(event)">
+    </div>
+    <div class="upload-box" onclick="document.getElementById('rightInput').click()">
+      <h4>📤 Right Image</h4>
+      <p>Right stereo camera</p>
+      <input type="file" id="rightInput" accept="image/*" style="display:none" onchange="handleRightUpload(event)">
+    </div>
+  </div>
+
+  <div class="params-section">
+    <h3>Camera Calibration Parameters</h3>
+    <div class="param-group">
+      <div class="param-item">
+        <label>Focal Length X (fx)</label>
+        <input type="number" id="fx" value="1000" step="0.1">
+      </div>
+      <div class="param-item">
+        <label>Focal Length Y (fy)</label>
+        <input type="number" id="fy" value="1000" step="0.1">
+      </div>
+      <div class="param-item">
+        <label>Principal Point X (cx)</label>
+        <input type="number" id="cx" value="320" step="0.1">
+      </div>
+      <div class="param-item">
+        <label>Principal Point Y (cy)</label>
+        <input type="number" id="cy" value="240" step="0.1">
+      </div>
+      <div class="param-item">
+        <label>Baseline (meters)</label>
+        <input type="number" id="baseline" value="0.1" step="0.001">
+      </div>
+    </div>
+    <div style="margin-top: 15px;">
+      <label><strong>Object Type:</strong></label>
+      <label style="margin-left: 15px;"><input type="radio" name="objectType" value="rectangular" checked> Rectangular</label>
+      <label style="margin-left: 15px;"><input type="radio" name="objectType" value="circular"> Circular</label>
+      <label style="margin-left: 15px;"><input type="radio" name="objectType" value="polygon"> Polygon</label>
+    </div>
+  </div>
+
+  <div style="text-align:center; margin: 20px 0;">
+    <button id="estimateBtn" class="btn btn-success" onclick="estimateSize()" disabled>Estimate Object Size</button>
+    <button class="btn btn-secondary" onclick="resetAll()">Reset All</button>
+  </div>
+
+  <div id="resultsSection" style="display:none;">
+    <h3>Size Estimation Results</h3>
+    <div class="image-grid">
+      <div class="image-card">
+        <h4>Left Image</h4>
+        <img id="leftImg" alt="Left">
+      </div>
+      <div class="image-card">
+        <h4>Right Image</h4>
+        <img id="rightImg" alt="Right">
+      </div>
+      <div class="image-card">
+        <h4>Disparity Map</h4>
+        <img id="disparityImg" alt="Disparity">
+      </div>
+      <div class="image-card">
+        <h4>Annotated Result</h4>
+        <img id="annotatedImg" alt="Annotated">
+      </div>
+    </div>
+    <div class="results-section">
+      <div><strong>Distance (Z):</strong> <span id="distanceZ">-</span> meters</div>
+      <div><strong>Average Disparity:</strong> <span id="avgDisparity">-</span> pixels</div>
+      <div id="dimensionsDiv"></div>
+      <div style="margin-top: 10px; font-style: italic; color: #666;" id="formulaNote"></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let leftImage = null;
+let rightImage = null;
+
+function handleLeftUpload(e) {
+  const f = e.target.files[0];
+  if(!f) return;
+  const r = new FileReader();
+  r.onload = (ev) => {
+    leftImage = ev.target.result;
+    checkReady();
+  };
+  r.readAsDataURL(f);
+}
+
+function handleRightUpload(e) {
+  const f = e.target.files[0];
+  if(!f) return;
+  const r = new FileReader();
+  r.onload = (ev) => {
+    rightImage = ev.target.result;
+    checkReady();
+  };
+  r.readAsDataURL(f);
+}
+
+function checkReady() {
+  if(leftImage && rightImage) {
+    document.getElementById('estimateBtn').disabled = false;
+  }
+}
+
+async function estimateSize() {
+  try {
+    const cameraParams = {
+      fx: parseFloat(document.getElementById('fx').value),
+      fy: parseFloat(document.getElementById('fy').value),
+      cx: parseFloat(document.getElementById('cx').value),
+      cy: parseFloat(document.getElementById('cy').value),
+      baseline: parseFloat(document.getElementById('baseline').value)
+    };
+    
+    const objectType = document.querySelector('input[name="objectType"]:checked').value;
+    
+    const resp = await fetch('/module7/api/calibrated_stereo', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ 
+        left_image: leftImage,
+        right_image: rightImage,
+        camera_params: cameraParams,
+        object_type: objectType
+      })
+    });
+    
+    const res = await resp.json();
+    if(res.success) {
+      document.getElementById('leftImg').src = res.left_image;
+      document.getElementById('rightImg').src = res.right_image;
+      document.getElementById('disparityImg').src = res.disparity_map;
+      document.getElementById('annotatedImg').src = res.annotated_image;
+      document.getElementById('distanceZ').innerText = res.distance_z_m.toFixed(3);
+      document.getElementById('avgDisparity').innerText = res.average_disparity.toFixed(2);
+      
+      // Display dimensions based on object type
+      const dimsDiv = document.getElementById('dimensionsDiv');
+      const dims = res.dimensions;
+      
+      if(res.object_type === 'rectangular') {
+        dimsDiv.innerHTML = `
+          <div><strong>Width:</strong> ${dims.width_mm.toFixed(2)} mm (${dims.width_inches.toFixed(2)} inches)</div>
+          <div><strong>Height:</strong> ${dims.height_mm.toFixed(2)} mm (${dims.height_inches.toFixed(2)} inches)</div>
+        `;
+      } else if(res.object_type === 'circular') {
+        dimsDiv.innerHTML = `
+          <div><strong>Diameter:</strong> ${dims.diameter_mm.toFixed(2)} mm (${dims.diameter_inches.toFixed(2)} inches)</div>
+          <div><strong>Radius:</strong> ${dims.radius_mm.toFixed(2)} mm</div>
+        `;
+      } else {
+        dimsDiv.innerHTML = `
+          <div><strong>Bounding Width:</strong> ${dims.bounding_width_mm.toFixed(2)} mm</div>
+          <div><strong>Bounding Height:</strong> ${dims.bounding_height_mm.toFixed(2)} mm</div>
+          <div style="font-style: italic; color: #666;">${dims.note || ''}</div>
+        `;
+      }
+      
+      document.getElementById('formulaNote').innerText = res.formula;
+      document.getElementById('resultsSection').style.display = 'block';
+    } else {
+      alert('Error: ' + (res.error || 'Size estimation failed'));
+    }
+  } catch(err) {
+    alert('Error: ' + err.message);
+  }
+}
+
+function resetAll() {
+  if(confirm('Reset everything?')) {
+    leftImage = null;
+    rightImage = null;
+    document.getElementById('leftInput').value = '';
+    document.getElementById('rightInput').value = '';
+    document.getElementById('resultsSection').style.display = 'none';
+    document.getElementById('estimateBtn').disabled = true;
+  }
+}
+</script>
+{% endblock %}
+

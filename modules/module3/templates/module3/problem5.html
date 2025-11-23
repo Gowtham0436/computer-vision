@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+{% block title %}Module 3 - Problem 5{% endblock %}
+{% block header %}Module 3 - Problem 5{% endblock %}
+{% block subheader %}SAM2 Comparison{% endblock %}
+
+{% block styles %}
+<style>
+  .main-container { max-width: 1200px; margin: 0 auto; }
+  .upload-section { text-align: center; margin-bottom: 30px; display: flex; gap: 20px; justify-content: center; flex-wrap: wrap; }
+  .upload-box { border: 3px dashed #667eea; border-radius: 10px; padding: 30px; cursor: pointer; transition: background 0.3s; min-width: 250px; }
+  .upload-box:hover { background: #f8f9fa; }
+  .image-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin: 30px 0; }
+  .image-card { background: white; padding: 15px; border-radius: 10px; box-shadow: 0 3px 10px rgba(0,0,0,0.1); }
+  .image-card h4 { margin: 0 0 10px 0; color: #667eea; }
+  canvas, img { 
+    max-width: 100%; 
+    max-height: 400px; 
+    width: auto; 
+    height: auto; 
+    border-radius: 8px; 
+    box-shadow: 0 3px 10px rgba(0,0,0,0.2); 
+    display: block; 
+    margin: 0 auto; 
+    image-rendering: -webkit-optimize-contrast;
+    image-rendering: auto;
+  }
+  .info-box { background: #fff3cd; padding: 15px; border-radius: 10px; margin: 20px 0; border-left: 4px solid #ffc107; }
+  .results-section { background: #e8f5e9; padding: 20px; border-radius: 10px; margin-top: 20px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="main-container">
+  <div style="margin-bottom: 20px;">
+    <a href="/module3" class="btn">← Back to Module 3</a>
+    <a href="/modules" class="btn">All Modules</a>
+  </div>
+
+  <h2>Problem 5: SAM2 Segmentation Comparison</h2>
+  <ol style="line-height: 1.8; margin-bottom: 20px;">
+    <li>Upload the <strong>original image</strong> (same one used for ArUco segmentation)</li>
+    <li>Upload the <strong>SAM2 segmented result</strong> image</li>
+    <li>Click <strong>Compare</strong> to see side-by-side comparison</li>
+    <li>Analyze differences between ArUco and SAM2 segmentation methods</li>
+  </ol>
+
+  <div class="info-box">
+    <h3 style="margin-top: 0; color: #856404;">ℹ️ About SAM2 Comparison</h3>
+    <p style="margin: 0; line-height: 1.8;">
+      This tool compares ArUco marker-based segmentation (Problem 4) with SAM2 model segmentation.
+      Upload the SAM2 segmented output image to visualize and compare both methods.
+      Manual visual comparison is recommended for detailed analysis.
+    </p>
+  </div>
+
+  <div class="upload-section">
+    <div class="upload-box" onclick="document.getElementById('originalInput').click()">
+      <h4>📤 Original Image</h4>
+      <p>Same image used for ArUco</p>
+      <input type="file" id="originalInput" accept="image/*" style="display:none" onchange="handleOriginalUpload(event)">
+    </div>
+    <div class="upload-box" onclick="document.getElementById('sam2Input').click()">
+      <h4>📤 SAM2 Result</h4>
+      <p>SAM2 segmented output</p>
+      <input type="file" id="sam2Input" accept="image/*" style="display:none" onchange="handleSAM2Upload(event)">
+    </div>
+  </div>
+
+  <div style="text-align:center; margin: 20px 0;">
+    <button id="compareBtn" class="btn btn-success" onclick="compareResults()" disabled>Compare Results</button>
+    <button class="btn btn-secondary" onclick="resetAll()">Reset All</button>
+  </div>
+
+  <div id="resultsSection" style="display:none;">
+    <h3>Comparison Results</h3>
+    <div class="image-grid">
+      <div class="image-card">
+        <h4>Original Image</h4>
+        <img id="originalImg" alt="Original">
+      </div>
+      <div class="image-card">
+        <h4>SAM2 Segmentation</h4>
+        <img id="sam2Img" alt="SAM2 Result">
+      </div>
+      <div class="image-card">
+        <h4>Side-by-Side Comparison</h4>
+        <img id="comparisonImg" alt="Comparison">
+      </div>
+    </div>
+    <div class="results-section">
+      <p><strong>Note:</strong> Visual comparison recommended. Analyze differences in boundary accuracy, edge smoothness, and segmentation quality between ArUco marker method and SAM2 model.</p>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let originalImage = null;
+let sam2Image = null;
+
+function handleOriginalUpload(e) {
+  const f = e.target.files[0];
+  if(!f) return;
+  const r = new FileReader();
+  r.onload = (ev) => {
+    originalImage = ev.target.result;
+    checkReady();
+  };
+  r.readAsDataURL(f);
+}
+
+function handleSAM2Upload(e) {
+  const f = e.target.files[0];
+  if(!f) return;
+  const r = new FileReader();
+  r.onload = (ev) => {
+    sam2Image = ev.target.result;
+    checkReady();
+  };
+  r.readAsDataURL(f);
+}
+
+function checkReady() {
+  if(originalImage && sam2Image) {
+    document.getElementById('compareBtn').disabled = false;
+  }
+}
+
+async function compareResults() {
+  try {
+    const resp = await fetch('/module3/api/compare_sam2', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ 
+        image: originalImage,
+        sam2_result: sam2Image
+      })
+    });
+    const res = await resp.json();
+    if(res.success) {
+      document.getElementById('originalImg').src = res.original_image;
+      document.getElementById('sam2Img').src = res.sam2_result;
+      document.getElementById('comparisonImg').src = res.comparison;
+      document.getElementById('resultsSection').style.display = 'block';
+    } else {
+      alert('Error: ' + (res.error || 'Comparison failed'));
+    }
+  } catch(err) {
+    alert('Error: ' + err.message);
+  }
+}
+
+function resetAll() {
+  if(confirm('Reset everything and start over?')) {
+    originalImage = null;
+    sam2Image = null;
+    document.getElementById('originalInput').value = '';
+    document.getElementById('sam2Input').value = '';
+    document.getElementById('resultsSection').style.display = 'none';
+    document.getElementById('compareBtn').disabled = true;
+  }
+}
+</script>
+{% endblock %}
+

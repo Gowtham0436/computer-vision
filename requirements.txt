@@ -1,0 +1,35 @@
+# CSc 8830 Computer Vision Project - Dependencies
+# Recommended Python Version: 3.11 (for best compatibility)
+
+# Build tools (required for some packages)
+setuptools>=65.0.0
+wheel>=0.38.0
+
+# Web Framework
+Flask==3.0.0
+Werkzeug==3.0.1
+
+# Computer Vision
+opencv-python==4.8.1.78
+opencv-contrib-python==4.8.1.78
+numpy>=1.24.3,<2.0.0  # Compatible with Python 3.11
+Pillow>=10.1.0
+
+# Face Recognition (OpenCV DNN - deployment friendly, no dlib needed)
+# Using OpenCV's DNN module with pre-trained models for face detection and recognition
+# Models are downloaded automatically on first run
+
+# Image Processing
+scipy>=1.11.4
+scikit-image>=0.22.0
+
+# Utilities
+python-dateutil>=2.8.2
+requests>=2.31.0  # For downloading face recognition models
+
+# Pose and Hand Tracking (Module 7)
+mediapipe>=0.10.0  # For pose estimation and hand tracking
+
+# Optional but recommended
+# gunicorn==21.2.0  # For production deployment
+# python-dotenv==1.0.0  # For environment variables

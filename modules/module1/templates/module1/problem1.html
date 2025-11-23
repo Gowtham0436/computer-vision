@@ -1,0 +1,375 @@
+{% extends "base.html" %}
+
+{% block title %}Module 1 - Problem 1{% endblock %}
+{% block header %}Module 1 - Problem 1{% endblock %}
+{% block subheader %}ROI Selection Method{% endblock %}
+
+{% block styles %}
+<style>
+    .main-container {
+        max-width: 1000px;
+        margin: 0 auto;
+    }
+    
+    .upload-section {
+        text-align: center;
+        margin-bottom: 30px;
+    }
+    
+    .upload-box {
+        border: 3px dashed #667eea;
+        border-radius: 10px;
+        padding: 40px;
+        cursor: pointer;
+        transition: background 0.3s;
+    }
+    
+    .upload-box:hover {
+        background: #f8f9fa;
+    }
+    
+    .image-display {
+        margin: 30px 0;
+        text-align: center;
+    }
+    
+    #displayImage {
+        max-width: 100%;
+        max-height: 70vh;
+        width: auto;
+        height: auto;
+        border-radius: 10px;
+        box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        cursor: crosshair;
+        display: block;
+        margin: 0 auto;
+        image-rendering: -webkit-optimize-contrast;
+        image-rendering: auto;
+    }
+    
+    .image-wrapper {
+        position: relative;
+        display: inline-block;
+        max-width: 100%;
+    }
+    
+    .params-section {
+        background: #f8f9fa;
+        padding: 20px;
+        border-radius: 10px;
+        margin: 20px 0;
+    }
+    
+    .param-group {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+        margin-top: 15px;
+    }
+    
+    .param-item label {
+        display: block;
+        margin-bottom: 5px;
+        color: #666;
+        font-weight: 500;
+    }
+    
+    .param-item input {
+        width: 100%;
+        padding: 8px;
+        border: 2px solid #ddd;
+        border-radius: 5px;
+    }
+    
+    .results-section {
+        background: #e8f5e9;
+        padding: 20px;
+        border-radius: 10px;
+        margin: 20px 0;
+    }
+    
+    .result-item {
+        margin: 10px 0;
+        font-size: 18px;
+    }
+    
+    .result-item strong {
+        color: #2e7d32;
+    }
+    
+    .selection-overlay {
+        position: absolute;
+        border: 3px solid #0f0;
+        background: rgba(0, 255, 0, 0.1);
+        pointer-events: none;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="main-container">
+    <div style="margin-bottom: 20px;">
+        <a href="/module1" class="btn"> Back to Module 1</a>
+        <a href="/modules" class="btn"> All Modules</a>
+    </div>
+    
+    <h2>Instructions</h2>
+    <ol style="line-height: 2;">
+        <li>Upload an image of the object you want to measure</li>
+        <li>Adjust camera parameters if needed (default values provided)</li>
+        <li>Click and drag on the image to select the object's bounding box</li>
+        <li>Click "Calculate Dimensions" to get real-world measurements</li>
+    </ol>
+    
+    <div class="upload-section">
+        <div class="upload-box" onclick="document.getElementById('fileInput').click()">
+            <h3> Click to Upload Image</h3>
+            <p>Supports: JPG, PNG, JPEG</p>
+            <input type="file" id="fileInput" accept="image/*" style="display: none;" onchange="handleFileUpload(event)">
+        </div>
+    </div>
+    
+    <div class="params-section">
+        <h3>Camera Parameters</h3>
+        <div class="param-group">
+            <div class="param-item">
+                <label>fx (Focal Length X)</label>
+                <input type="number" id="fx" value="4024.75034" step="0.001">
+            </div>
+            <div class="param-item">
+                <label>fy (Focal Length Y)</label>
+                <input type="number" id="fy" value="4021.56657" step="0.001">
+            </div>
+            <div class="param-item">
+                <label>cx (Principal Point X)</label>
+                <input type="number" id="cx" value="2132.83332" step="0.001">
+            </div>
+            <div class="param-item">
+                <label>cy (Principal Point Y)</label>
+                <input type="number" id="cy" value="2880.51288" step="0.001">
+            </div>
+            <div class="param-item">
+                <label>Distance Z (mm)</label>
+                <input type="number" id="z" value="300" step="1">
+            </div>
+        </div>
+    </div>
+    
+    <div class="image-display" id="imageContainer" style="display: none;">
+        <h3>Select Object Region (Click and Drag)</h3>
+        <div class="image-wrapper">
+            <canvas id="displayImage"></canvas>
+        </div>
+        <div style="margin-top: 20px;">
+            <button class="btn" onclick="clearSelection()">Clear Selection</button>
+            <button class="btn btn-success" onclick="calculateDimensions()">Calculate Dimensions</button>
+            <button class="btn btn-secondary" onclick="resetAll()">Reset All</button>
+        </div>
+    </div>
+    
+    <div class="results-section" id="resultsSection" style="display: none;">
+        <h3> Measurement Results</h3>
+        <div class="result-item">
+            <strong>Width:</strong> <span id="widthMm">0</span> mm (<span id="widthInch">0</span> inches)
+        </div>
+        <div class="result-item">
+            <strong>Height:</strong> <span id="heightMm">0</span> mm (<span id="heightInch">0</span> inches)
+        </div>
+        <div style="margin-top: 20px;">
+            <img id="annotatedImage" style="max-width: 100%; max-height: 70vh; width: auto; height: auto; border-radius: 10px; display: block; margin: 0 auto; image-rendering: -webkit-optimize-contrast; image-rendering: auto;">
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let uploadedImage = null;
+let canvas = null;
+let ctx = null;
+let isDrawing = false;
+let startX, startY, currentX, currentY;
+let selection = null;
+
+let imageScale = 1.0;
+let actualImageWidth = 0;
+let actualImageHeight = 0;
+
+function handleFileUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const img = new Image();
+        img.onload = function() {
+            uploadedImage = e.target.result;
+            canvas = document.getElementById('displayImage');
+            ctx = canvas.getContext('2d');
+            
+            // Store actual image dimensions
+            actualImageWidth = img.width;
+            actualImageHeight = img.height;
+            
+            // Calculate display size to fit screen (max 90vw x 70vh)
+            const maxDisplayWidth = Math.min(window.innerWidth * 0.9, img.width);
+            const maxDisplayHeight = Math.min(window.innerHeight * 0.7, img.height);
+            
+            // Calculate scale to fit
+            const scaleX = maxDisplayWidth / img.width;
+            const scaleY = maxDisplayHeight / img.height;
+            imageScale = Math.min(scaleX, scaleY, 1.0); // Don't upscale
+            
+            // Set canvas display size (CSS)
+            canvas.style.width = (img.width * imageScale) + 'px';
+            canvas.style.height = (img.height * imageScale) + 'px';
+            
+            // Set canvas internal size (for drawing)
+            canvas.width = img.width;
+            canvas.height = img.height;
+            
+            // Disable image smoothing for crisp rendering
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+            
+            // Draw image at full resolution
+            ctx.drawImage(img, 0, 0);
+            
+            document.getElementById('imageContainer').style.display = 'block';
+            document.getElementById('resultsSection').style.display = 'none';
+            
+            setupCanvasEvents();
+        };
+        img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+}
+
+function setupCanvasEvents() {
+    canvas.addEventListener('mousedown', startDrawing);
+    canvas.addEventListener('mousemove', draw);
+    canvas.addEventListener('mouseup', stopDrawing);
+}
+
+function startDrawing(e) {
+    const rect = canvas.getBoundingClientRect();
+    // Convert display coordinates to actual image coordinates
+    startX = (e.clientX - rect.left) * (canvas.width / rect.width);
+    startY = (e.clientY - rect.top) * (canvas.height / rect.height);
+    isDrawing = true;
+}
+
+function draw(e) {
+    if (!isDrawing) return;
+    
+    const rect = canvas.getBoundingClientRect();
+    // Convert display coordinates to actual image coordinates
+    currentX = (e.clientX - rect.left) * (canvas.width / rect.width);
+    currentY = (e.clientY - rect.top) * (canvas.height / rect.height);
+    
+    // Redraw image
+    const img = new Image();
+    img.onload = function() {
+        ctx.drawImage(img, 0, 0);
+        
+        // Draw rectangle
+        ctx.strokeStyle = '#0f0';
+        ctx.lineWidth = Math.max(2, 3 / imageScale); // Scale line width
+        ctx.strokeRect(startX, startY, currentX - startX, currentY - startY);
+    };
+    img.src = uploadedImage;
+}
+
+function stopDrawing(e) {
+    if (!isDrawing) return;
+    isDrawing = false;
+    
+    selection = {
+        x: Math.min(startX, currentX),
+        y: Math.min(startY, currentY),
+        width: Math.abs(currentX - startX),
+        height: Math.abs(currentY - startY)
+    };
+}
+
+function clearSelection() {
+    selection = null;
+    const img = new Image();
+    img.onload = function() {
+        ctx.drawImage(img, 0, 0);
+    };
+    img.src = uploadedImage;
+    document.getElementById('resultsSection').style.display = 'none';
+}
+
+function resetAll() {
+    if(confirm('Reset everything and start over?')) {
+        // Reset all variables
+        uploadedImage = null;
+        selection = null;
+        isDrawing = false;
+        
+        // Clear canvas
+        if(canvas && ctx) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+        
+        // Hide sections
+        document.getElementById('imageContainer').style.display = 'none';
+        document.getElementById('resultsSection').style.display = 'none';
+        
+        // Reset file input
+        document.getElementById('fileInput').value = '';
+        
+        // Remove event listeners
+        if(canvas) {
+            canvas.removeEventListener('mousedown', startDrawing);
+            canvas.removeEventListener('mousemove', draw);
+            canvas.removeEventListener('mouseup', stopDrawing);
+        }
+    }
+}
+
+async function calculateDimensions() {
+    if (!selection) {
+        alert('Please select a region first');
+        return;
+    }
+    
+    const params = {
+        fx: parseFloat(document.getElementById('fx').value),
+        fy: parseFloat(document.getElementById('fy').value),
+        cx: parseFloat(document.getElementById('cx').value),
+        cy: parseFloat(document.getElementById('cy').value),
+        z: parseFloat(document.getElementById('z').value)
+    };
+    
+    try {
+        const response = await fetch('/module1/api/calculate_roi', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                image: uploadedImage,
+                roi: selection,
+                params: params
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            document.getElementById('widthMm').innerText = result.width_mm;
+            document.getElementById('widthInch').innerText = result.width_inches;
+            document.getElementById('heightMm').innerText = result.height_mm;
+            document.getElementById('heightInch').innerText = result.height_inches;
+            document.getElementById('annotatedImage').src = result.annotated_image;
+            document.getElementById('resultsSection').style.display = 'block';
+        } else {
+            alert('Error: ' + result.error);
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+</script>
+{% endblock %}

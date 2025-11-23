@@ -1,0 +1,273 @@
+{% extends "base.html" %}
+{% block title %}Module 5 - Problem 1{% endblock %}
+{% block header %}Module 5 - Problem 1{% endblock %}
+{% block subheader %}Motion Tracking Equations & Lucas-Kanade Derivation{% endblock %}
+
+{% block styles %}
+<style>
+  .main-container { max-width: 1200px; margin: 0 auto; }
+  .derivation-section { background: white; padding: 25px; border-radius: 10px; margin: 20px 0; box-shadow: 0 3px 10px rgba(0,0,0,0.1); }
+  .derivation-section h3 { color: #667eea; margin-bottom: 15px; }
+  .math-formula { background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 15px 0; font-family: 'Courier New', monospace; border-left: 4px solid #667eea; }
+  .upload-section { text-align: center; margin: 30px 0; }
+  .upload-box { border: 3px dashed #667eea; border-radius: 10px; padding: 30px; cursor: pointer; transition: background 0.3s; display: inline-block; margin: 10px; min-width: 200px; }
+  .upload-box:hover { background: #f8f9fa; }
+  canvas, img { 
+    max-width: 100%; 
+    max-height: 500px; 
+    width: auto; 
+    height: auto; 
+    border-radius: 8px; 
+    box-shadow: 0 3px 10px rgba(0,0,0,0.2); 
+    display: block; 
+    margin: 0 auto; 
+  }
+  .results-section { background: #e8f5e9; padding: 20px; border-radius: 10px; margin-top: 20px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="main-container">
+  <div style="margin-bottom: 20px;">
+    <a href="/module5" class="btn">← Back to Module 5</a>
+    <a href="/modules" class="btn">All Modules</a>
+  </div>
+
+  <h2>Problem 1: Motion Tracking Equations & Lucas-Kanade Derivation</h2>
+  <p style="color: #666; margin-bottom: 30px;">
+    This problem requires theoretical derivations. The derivations are shown below, and you can compute motion estimates between two consecutive frames using the tool below.
+  </p>
+
+  <!-- Part (a): Motion Tracking Equation -->
+  <div class="derivation-section">
+    <h3>(a) Motion Tracking Equation Derivation</h3>
+    <p><strong>Fundamental Principle:</strong> Brightness Constancy Assumption</p>
+    <p>We assume that the intensity of a pixel remains constant as it moves from one frame to the next:</p>
+    
+    <div class="math-formula">
+      I(x, y, t) = I(x + u, y + v, t + 1)
+    </div>
+    
+    <p>where:</p>
+    <ul style="line-height: 1.8;">
+      <li>I(x, y, t) is the intensity at position (x, y) at time t</li>
+      <li>(u, v) is the motion vector (displacement in x and y directions)</li>
+      <li>t and t+1 represent consecutive frames</li>
+    </ul>
+    
+    <p><strong>Derivation:</strong></p>
+    <p>Expanding I(x + u, y + v, t + 1) using Taylor series:</p>
+    
+    <div class="math-formula">
+      I(x + u, y + v, t + 1) ≈ I(x, y, t) + u·∂I/∂x + v·∂I/∂y + ∂I/∂t
+    </div>
+    
+    <p>Substituting the brightness constancy assumption:</p>
+    
+    <div class="math-formula">
+      I(x, y, t) = I(x, y, t) + u·∂I/∂x + v·∂I/∂y + ∂I/∂t
+    </div>
+    
+    <p>Simplifying:</p>
+    
+    <div class="math-formula">
+      u·Iₓ + v·Iᵧ + Iₜ = 0
+    </div>
+    
+    <p>where:</p>
+    <ul style="line-height: 1.8;">
+      <li>Iₓ = ∂I/∂x (spatial gradient in x-direction)</li>
+      <li>Iᵧ = ∂I/∂y (spatial gradient in y-direction)</li>
+      <li>Iₜ = ∂I/∂t (temporal gradient)</li>
+    </ul>
+    
+    <p>This is the <strong>Optical Flow Constraint Equation</strong>.</p>
+  </div>
+
+  <!-- Part (b): Lucas-Kanade for Affine Motion -->
+  <div class="derivation-section">
+    <h3>(b) Lucas-Kanade Algorithm for Affine Motion</h3>
+    <p><strong>Affine Motion Model:</strong></p>
+    
+    <div class="math-formula">
+      u(x, y) = a₁x + b₁y + c₁<br>
+      v(x, y) = a₂x + b₂y + c₂
+    </div>
+    
+    <p>where a₁, b₁, c₁, a₂, b₂, c₂ are the affine parameters.</p>
+    
+    <p><strong>Derivation:</strong></p>
+    <p>Substituting the affine motion model into the optical flow constraint:</p>
+    
+    <div class="math-formula">
+      (a₁x + b₁y + c₁)·Iₓ + (a₂x + b₂y + c₂)·Iᵧ + Iₜ = 0
+    </div>
+    
+    <p>Rearranging:</p>
+    
+    <div class="math-formula">
+      a₁x·Iₓ + b₁y·Iₓ + c₁·Iₓ + a₂x·Iᵧ + b₂y·Iᵧ + c₂·Iᵧ + Iₜ = 0
+    </div>
+    
+    <p>For a local window W around point (x, y), we minimize the error:</p>
+    
+    <div class="math-formula">
+      E = Σ<sub>(x,y)∈W</sub> [a₁x·Iₓ + b₁y·Iₓ + c₁·Iₓ + a₂x·Iᵧ + b₂y·Iᵧ + c₂·Iᵧ + Iₜ]²
+    </div>
+    
+    <p>Taking partial derivatives with respect to each parameter and setting to zero:</p>
+    
+    <div class="math-formula">
+      ∂E/∂a₁ = 0, ∂E/∂b₁ = 0, ∂E/∂c₁ = 0<br>
+      ∂E/∂a₂ = 0, ∂E/∂b₂ = 0, ∂E/∂c₂ = 0
+    </div>
+    
+    <p>This gives us a system of 6 linear equations:</p>
+    
+    <div class="math-formula">
+      [Σ x²Iₓ²    Σ xyIₓ²    Σ xIₓ²    Σ x²IₓIᵧ   Σ xyIₓIᵧ   Σ xIₓIᵧ  ] [a₁]   [Σ -xIₓIₜ]<br>
+      [Σ xyIₓ²    Σ y²Iₓ²    Σ yIₓ²    Σ xyIₓIᵧ   Σ y²IₓIᵧ   Σ yIₓIᵧ  ] [b₁]   [Σ -yIₓIₜ]<br>
+      [Σ xIₓ²     Σ yIₓ²     Σ Iₓ²     Σ xIₓIᵧ    Σ yIₓIᵧ    Σ IₓIᵧ   ] [c₁] = [Σ -IₓIₜ ]<br>
+      [Σ x²IₓIᵧ   Σ xyIₓIᵧ   Σ xIₓIᵧ   Σ x²Iᵧ²    Σ xyIᵧ²    Σ xIᵧ²   ] [a₂]   [Σ -xIᵧIₜ]<br>
+      [Σ xyIₓIᵧ   Σ y²IₓIᵧ   Σ yIₓIᵧ   Σ xyIᵧ²    Σ y²Iᵧ²    Σ yIᵧ²   ] [b₂]   [Σ -yIᵧIₜ]<br>
+      [Σ xIₓIᵧ    Σ yIₓIᵧ    Σ IₓIᵧ    Σ xIᵧ²     Σ yIᵧ²     Σ Iᵧ²    ] [c₂]   [Σ -IᵧIₜ ]
+    </div>
+    
+    <p>Solving this 6×6 linear system gives us the affine motion parameters.</p>
+    
+    <p><strong>Algorithm Steps:</strong></p>
+    <ol style="line-height: 1.8;">
+      <li>Compute spatial gradients Iₓ and Iᵧ using Sobel or similar</li>
+      <li>Compute temporal gradient Iₜ = I(x, y, t+1) - I(x, y, t)</li>
+      <li>For each window W, build the 6×6 matrix and solve for affine parameters</li>
+      <li>Use the parameters to compute motion vectors u(x, y) and v(x, y)</li>
+    </ol>
+  </div>
+
+  <!-- Motion Estimation Tool -->
+  <div class="derivation-section">
+    <h3>Compute Motion Function Estimates</h3>
+    <p>Upload two consecutive frames from your dataset to compute motion estimates:</p>
+    
+    <div class="upload-section">
+      <div class="upload-box" onclick="document.getElementById('frame1Input').click()">
+        <h4>📤 Frame 1 (t)</h4>
+        <input type="file" id="frame1Input" accept="image/*" style="display:none" onchange="handleFrame1Upload(event)">
+      </div>
+      <div class="upload-box" onclick="document.getElementById('frame2Input').click()">
+        <h4>📤 Frame 2 (t+1)</h4>
+        <input type="file" id="frame2Input" accept="image/*" style="display:none" onchange="handleFrame2Upload(event)">
+      </div>
+    </div>
+    
+    <div style="text-align:center; margin: 20px 0;">
+      <button id="computeBtn" class="btn btn-success" onclick="computeMotion()" disabled>Compute Motion Estimates</button>
+      <button class="btn btn-secondary" onclick="resetAll()">Reset</button>
+    </div>
+    
+    <div id="resultsSection" style="display:none;">
+      <h3>Motion Estimation Results</h3>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin: 20px 0;">
+        <div>
+          <h4>Frame 1</h4>
+          <img id="frame1Img" alt="Frame 1">
+        </div>
+        <div>
+          <h4>Frame 2</h4>
+          <img id="frame2Img" alt="Frame 2">
+        </div>
+        <div>
+          <h4>Motion Vectors</h4>
+          <img id="motionVectorsImg" alt="Motion Vectors">
+        </div>
+        <div>
+          <h4>Motion Field</h4>
+          <img id="motionFieldImg" alt="Motion Field">
+        </div>
+      </div>
+      <div class="results-section">
+        <div><strong>Mean Motion (u, v):</strong> (<span id="meanMotion">-</span>)</div>
+        <div><strong>Std Deviation:</strong> (<span id="stdMotion">-</span>)</div>
+        <div><strong>Features Tracked:</strong> <span id="numFeatures">0</span></div>
+        <div style="margin-top: 10px; font-style: italic; color: #666;" id="motionNote"></div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let frame1 = null;
+let frame2 = null;
+
+function handleFrame1Upload(e) {
+  const f = e.target.files[0];
+  if(!f) return;
+  const r = new FileReader();
+  r.onload = (ev) => {
+    frame1 = ev.target.result;
+    checkReady();
+  };
+  r.readAsDataURL(f);
+}
+
+function handleFrame2Upload(e) {
+  const f = e.target.files[0];
+  if(!f) return;
+  const r = new FileReader();
+  r.onload = (ev) => {
+    frame2 = ev.target.result;
+    checkReady();
+  };
+  r.readAsDataURL(f);
+}
+
+function checkReady() {
+  if(frame1 && frame2) {
+    document.getElementById('computeBtn').disabled = false;
+  }
+}
+
+async function computeMotion() {
+  try {
+    const resp = await fetch('/module5/api/compute_motion', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ 
+        image1: frame1,
+        image2: frame2
+      })
+    });
+    const res = await resp.json();
+    if(res.success) {
+      document.getElementById('frame1Img').src = res.frame1;
+      document.getElementById('frame2Img').src = res.frame2;
+      document.getElementById('motionVectorsImg').src = res.motion_vectors;
+      document.getElementById('motionFieldImg').src = res.motion_field;
+      document.getElementById('meanMotion').innerText = `${res.mean_motion[0].toFixed(2)}, ${res.mean_motion[1].toFixed(2)}`;
+      document.getElementById('stdMotion').innerText = `${res.std_motion[0].toFixed(2)}, ${res.std_motion[1].toFixed(2)}`;
+      document.getElementById('numFeatures').innerText = res.num_features;
+      document.getElementById('motionNote').innerText = res.note;
+      document.getElementById('resultsSection').style.display = 'block';
+    } else {
+      alert('Error: ' + (res.error || 'Motion computation failed'));
+    }
+  } catch(err) {
+    alert('Error: ' + err.message);
+  }
+}
+
+function resetAll() {
+  if(confirm('Reset everything?')) {
+    frame1 = null;
+    frame2 = null;
+    document.getElementById('frame1Input').value = '';
+    document.getElementById('frame2Input').value = '';
+    document.getElementById('resultsSection').style.display = 'none';
+    document.getElementById('computeBtn').disabled = true;
+  }
+}
+</script>
+{% endblock %}
+

@@ -1,0 +1,322 @@
+{% extends "base.html" %}
+{% block title %}Module 2 - Problem 3{% endblock %}
+{% block header %}Module 2 - Problem 3{% endblock %}
+{% block subheader %}Local Template Detection & Blurring{% endblock %}
+
+{% block styles %}
+<style>
+  .main-container { max-width: 1000px; margin: 0 auto; }
+  .upload-section { text-align: center; margin-bottom: 30px; }
+  .upload-box { border: 3px dashed #667eea; border-radius: 10px; padding: 40px; cursor: pointer; transition: background 0.3s; display: inline-block; }
+  .upload-box:hover { background: #f8f9fa; }
+  .image-display { margin: 30px 0; text-align: center; }
+  canvas { 
+    max-width: 100%; 
+    max-height: 70vh; 
+    width: auto; 
+    height: auto; 
+    border-radius: 10px; 
+    box-shadow: 0 5px 15px rgba(0,0,0,0.2); 
+    display: block; 
+    margin: 0 auto; 
+    image-rendering: -webkit-optimize-contrast;
+    image-rendering: auto;
+  }
+  .results-section { background: #e8f5e9; padding: 20px; border-radius: 10px; margin-top: 20px; }
+  .result-item { font-size: 18px; margin: 5px 0; }
+  .result-item strong { color: #2e7d32; }
+  .templates-section { background: #f8f9fa; padding: 20px; border-radius: 10px; margin-bottom: 30px; }
+  .templates-section h3 { margin-top: 0; }
+  .templates-section h4 { margin: 15px 0 10px 0; font-size: 1.1em; }
+  #templatesContainer { min-height: 60px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="main-container">
+  <div style="margin-bottom: 20px;">
+    <a href="/module2" class="btn"> Back to Module 2</a>
+    <a href="/modules" class="btn"> All Modules</a>
+  </div>
+
+  <h2>Instructions</h2>
+  <ol style="line-height: 1.8; margin-bottom: 20px;">
+    <li>Upload template images (objects to detect) - up to 10 templates</li>
+    <li>Upload a scene image where you want to detect objects</li>
+    <li>Click <strong>Detect Objects</strong> to find objects using correlation matching</li>
+    <li>Detected regions are automatically blurred</li>
+  </ol>
+  <p style="background: #fff3cd; padding: 10px; border-radius: 5px; margin-bottom: 20px;">
+    <strong>Note:</strong> The system checks up to 10 templates using correlation method. 
+    Objects with correlation &gt; 0.6 are detected and blurred.
+  </p>
+
+  <div class="templates-section" style="background: #f8f9fa; padding: 20px; border-radius: 10px; margin-bottom: 30px;">
+    <h3>Template Management</h3>
+    <div style="display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 20px;">
+      <div class="upload-box" style="min-width: 200px; cursor: pointer;" onclick="document.getElementById('templateInput').click()">
+        <h4 style="margin: 0 0 10px 0;">Upload Template</h4>
+        <p style="margin: 0; font-size: 0.9em;">Add object to detect</p>
+        <input type="file" id="templateInput" accept="image/*" style="display:none" onchange="handleTemplateUpload(event)">
+      </div>
+      <div style="flex: 1; min-width: 200px;">
+        <label style="display: block; margin-bottom: 5px; font-weight: 500;">Template Name (optional):</label>
+        <input type="text" id="templateName" placeholder="e.g., car, phone, logo" style="width: 100%; padding: 8px; border: 2px solid #ddd; border-radius: 5px; box-sizing: border-box;">
+      </div>
+    </div>
+    
+    <div id="templatesList" style="margin-top: 20px;">
+      <h4>Uploaded Templates (<span id="templateCount">0</span>)</h4>
+      <div id="templatesContainer" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 15px; margin-top: 15px;">
+        <p style="color: #666;">No templates uploaded yet. Upload templates to detect objects.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="upload-section">
+    <div class="upload-box" onclick="document.getElementById('sceneInput').click()">
+      <h3> Upload Scene Image</h3>
+      <p>JPG / PNG / JPEG</p>
+      <input type="file" id="sceneInput" accept="image/*" style="display:none" onchange="handleSceneUpload(event)">
+    </div>
+  </div>
+
+  <div class="image-display" id="scenePreview" style="display:none;">
+    <h3>Original Scene</h3>
+    <canvas id="scenePreviewCanvas"></canvas>
+  </div>
+
+  <div style="text-align:center; margin: 20px 0;">
+    <button id="detectBtn" class="btn btn-success" onclick="detectObjects()" disabled> Detect Objects</button>
+    <button class="btn btn-secondary" onclick="resetDetection()">Reset Detection</button>
+  </div>
+
+  <div class="image-display" id="blurResultSection" style="display:none;">
+    <h3>Original vs Blurred Result</h3>
+    <div style="display:flex; flex-wrap:wrap; gap:20px; justify-content:center;">
+      <div><canvas id="origSceneCanvas"></canvas><p style="text-align:center; margin-top:5px;">Original</p></div>
+      <div><canvas id="blurSceneCanvas"></canvas><p style="text-align:center; margin-top:5px;">Blurred</p></div>
+    </div>
+  </div>
+
+  <div class="results-section" id="detectResults" style="display:none;">
+    <h3>Detection Summary</h3>
+    <div class="result-item"><strong>Objects Detected:</strong> <span id="objCount">0</span></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let sceneImage = null;
+let templates = [];
+
+// Load templates on page load
+window.addEventListener('DOMContentLoaded', loadTemplates);
+
+async function loadTemplates() {
+  try {
+    const resp = await fetch('/module2/api/list_templates');
+    const res = await resp.json();
+    if(res.success) {
+      templates = res.templates || [];
+      renderTemplates();
+    }
+  } catch(err) {
+    console.error('Error loading templates:', err);
+  }
+}
+
+function renderTemplates() {
+  const container = document.getElementById('templatesContainer');
+  const countEl = document.getElementById('templateCount');
+  
+  countEl.innerText = templates.length;
+  
+  if(templates.length === 0) {
+    container.innerHTML = '<p style="color: #666;">No templates uploaded yet. Upload templates to detect objects.</p>';
+    return;
+  }
+  
+  container.innerHTML = templates.map(t => `
+    <div style="border: 2px solid #ddd; border-radius: 8px; padding: 10px; text-align: center; background: white;">
+      <div style="font-size: 12px; margin-bottom: 5px; word-break: break-all;">${t.filename}</div>
+      <div style="font-size: 11px; color: #666; margin-bottom: 8px;">${t.size_kb} KB</div>
+      <button class="btn btn-danger" style="padding: 5px 10px; font-size: 12px;" onclick="deleteTemplate('${t.filename}')">Delete</button>
+    </div>
+  `).join('');
+}
+
+async function handleTemplateUpload(e) {
+  const f = e.target.files[0];
+  if(!f) return;
+  
+  const r = new FileReader();
+  r.onload = async (ev) => {
+    const templateName = document.getElementById('templateName').value.trim();
+    try {
+      const resp = await fetch('/module2/api/upload_template', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ 
+          image: ev.target.result,
+          name: templateName || undefined
+        })
+      });
+      const res = await resp.json();
+      if(res.success) {
+        alert('Template uploaded successfully: ' + res.filename);
+        document.getElementById('templateName').value = '';
+        document.getElementById('templateInput').value = '';
+        await loadTemplates();
+      } else {
+        alert('Error: ' + (res.error || 'Upload failed'));
+      }
+    } catch(err) {
+      alert('Error: ' + err.message);
+    }
+  };
+  r.readAsDataURL(f);
+}
+
+async function deleteTemplate(filename) {
+  if(!confirm(`Delete template "${filename}"?`)) return;
+  
+  try {
+    const resp = await fetch('/module2/api/delete_template', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ filename: filename })
+    });
+    const res = await resp.json();
+    if(res.success) {
+      await loadTemplates();
+    } else {
+      alert('Error: ' + (res.error || 'Delete failed'));
+    }
+  } catch(err) {
+    alert('Error: ' + err.message);
+  }
+}
+
+function handleSceneUpload(e){
+  const f = e.target.files[0]; if(!f) return;
+  const r = new FileReader();
+  r.onload = (ev)=>{
+    const img = new Image();
+    img.onload = ()=>{
+      sceneImage = ev.target.result;
+      const c = document.getElementById('scenePreviewCanvas');
+      const ctx = c.getContext('2d');
+      
+      // Calculate display size
+      const maxDisplayWidth = Math.min(window.innerWidth * 0.9, img.width);
+      const maxDisplayHeight = Math.min(window.innerHeight * 0.7, img.height);
+      const scaleX = maxDisplayWidth / img.width;
+      const scaleY = maxDisplayHeight / img.height;
+      const displayScale = Math.min(scaleX, scaleY, 1.0);
+      
+      c.style.width = (img.width * displayScale) + 'px';
+      c.style.height = (img.height * displayScale) + 'px';
+      c.width = img.width;
+      c.height = img.height;
+      
+      // Enable high-quality image smoothing
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      
+      ctx.drawImage(img,0,0);
+      
+      document.getElementById('scenePreview').style.display='block';
+      document.getElementById('detectBtn').disabled = false;
+      document.getElementById('blurResultSection').style.display='none';
+      document.getElementById('detectResults').style.display='none';
+    };
+    img.src = ev.target.result;
+  };
+  r.readAsDataURL(f);
+}
+
+async function detectObjects(){
+  try{
+    const resp = await fetch('/module2/api/detect_blur', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ image: sceneImage })
+    });
+    const res = await resp.json();
+    if(res.success){
+      const oc = document.getElementById('origSceneCanvas');
+      const bc = document.getElementById('blurSceneCanvas');
+
+      const o = new Image(); o.onload=()=>{ 
+        const maxW = Math.min(window.innerWidth * 0.45, o.width);
+        const maxH = Math.min(window.innerHeight * 0.7, o.height);
+        const s = Math.min(maxW/o.width, maxH/o.height, 1.0);
+        oc.style.width = (o.width*s) + 'px'; oc.style.height = (o.height*s) + 'px';
+        oc.width = o.width; oc.height = o.height; 
+        const octx = oc.getContext('2d');
+        octx.imageSmoothingEnabled = true;
+        octx.imageSmoothingQuality = 'high';
+        octx.drawImage(o,0,0); 
+      }; o.src = sceneImage;
+      
+      const b = new Image(); b.onload=()=>{ 
+        const maxW = Math.min(window.innerWidth * 0.45, b.width);
+        const maxH = Math.min(window.innerHeight * 0.7, b.height);
+        const s = Math.min(maxW/b.width, maxH/b.height, 1.0);
+        bc.style.width = (b.width*s) + 'px'; bc.style.height = (b.height*s) + 'px';
+        bc.width = b.width; bc.height = b.height; 
+        const bctx = bc.getContext('2d');
+        bctx.imageSmoothingEnabled = true;
+        bctx.imageSmoothingQuality = 'high';
+        bctx.drawImage(b,0,0); 
+      }; b.src = res.blurred_image;
+
+      document.getElementById('scenePreview').style.display='none';
+      document.getElementById('blurResultSection').style.display='block';
+      const count = res.count;
+      document.getElementById('objCount').innerText = count + (count===0 ? " (none)" : "");
+      if(res.detected_objects && res.detected_objects.length > 0) {
+        let details = '<div style="margin-top:10px;"><strong>Detected Objects:</strong><ul style="text-align: left;">';
+        res.detected_objects.forEach(obj => {
+          details += `<li>${obj.template}: Correlation ${obj.correlation} at (${obj.x}, ${obj.y})</li>`;
+        });
+        details += '</ul></div>';
+        const resultsDiv = document.getElementById('detectResults');
+        const existingHTML = resultsDiv.innerHTML;
+        resultsDiv.innerHTML = existingHTML + details;
+      }
+      document.getElementById('detectResults').style.display='block';
+    } else {
+      alert('Error: ' + (res.error || 'Detection failed.'));
+    }
+  }catch(err){ alert('Error: '+err.message); }
+}
+
+function resetDetection() {
+  if(confirm('Reset detection results and try again?')) {
+    sceneImage = null;
+    
+    const canvases = ['scenePreviewCanvas', 'origSceneCanvas', 'blurSceneCanvas'];
+    canvases.forEach(id => {
+      const c = document.getElementById(id);
+      if(c) {
+        const ctx = c.getContext('2d');
+        ctx.clearRect(0, 0, c.width, c.height);
+      }
+    });
+    
+    document.getElementById('scenePreview').style.display = 'none';
+    document.getElementById('blurResultSection').style.display = 'none';
+    document.getElementById('detectResults').style.display = 'none';
+    document.getElementById('sceneInput').value = '';
+    document.getElementById('detectBtn').disabled = true;
+    
+    // Reset results HTML (remove detected objects list)
+    const resultsDiv = document.getElementById('detectResults');
+    resultsDiv.innerHTML = '<h3>Detection Summary</h3><div class="result-item"><strong>Objects Detected:</strong> <span id="objCount">0</span></div>';
+  }
+}
+</script>
+{% endblock %}

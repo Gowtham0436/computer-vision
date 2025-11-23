@@ -1,0 +1,290 @@
+{% extends "base.html" %}
+
+{% block styles %}
+<style>
+    .auth-section {
+        max-width: 600px;
+        margin: 0 auto;
+        text-align: center;
+    }
+    
+    .video-container {
+        margin: 30px 0;
+        position: relative;
+    }
+    
+    #video, #canvas {
+        width: 100%;
+        max-width: 500px;
+        display: block;
+        margin: 0 auto;
+    }
+    
+    #canvas {
+        display: none;
+    }
+    
+    .modules {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 30px;
+        margin-top: 40px;
+    }
+    
+    .module-card {
+        background: #f8f9fa;
+        padding: 30px;
+        border-radius: 10px;
+        box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        transition: transform 0.3s;
+        cursor: pointer;
+    }
+    
+    .module-card:hover {
+        transform: translateY(-5px);
+    }
+    
+    .module-card h3 {
+        color: #667eea;
+        margin-bottom: 15px;
+    }
+    
+    .module-card p {
+        color: #666;
+        line-height: 1.6;
+    }
+    
+    .user-info {
+        background: #e8f5e9;
+        padding: 20px;
+        border-radius: 10px;
+        margin-bottom: 30px;
+        text-align: center;
+    }
+    
+    .user-info h3 {
+        color: #2e7d32;
+        margin-bottom: 10px;
+    }
+    
+    #registerForm {
+        margin-top: 20px;
+    }
+    
+    input[type="text"] {
+        padding: 10px;
+        border: 2px solid #ddd;
+        border-radius: 8px;
+        font-size: 16px;
+        width: 300px;
+        margin: 10px 0;
+    }
+    
+    .status-panel {
+        background: #f8f9fa;
+        padding: 15px;
+        border-radius: 8px;
+        margin: 20px 0;
+    }
+    
+    .progress-bar {
+        background: #ddd;
+        height: 30px;
+        border-radius: 15px;
+        overflow: hidden;
+        margin: 10px 0;
+    }
+    
+    .progress-fill {
+        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+        height: 100%;
+        width: 0%;
+        transition: width 0.3s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-weight: bold;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="auth-section" id="authSection">
+    <h2>Welcome! Please Authenticate</h2>
+    <p>Use facial recognition to access the measurement tools</p>
+    
+    <div id="registerSection" style="display: none;">
+        <h3>First Time Setup</h3>
+        <p>No registered faces found. Let's register your face.</p>
+        <form id="registerForm">
+            <input type="text" id="userName" placeholder="Enter your name" required>
+            <br>
+            <button type="button" class="btn" onclick="startRegistration()">Start Registration</button>
+        </form>
+    </div>
+    
+    <div class="video-container" id="videoContainer" style="display: none;">
+        <video id="video" autoplay></video>
+        <canvas id="canvas"></canvas>
+        <div class="status-panel">
+            <div id="statusMessage">Initializing camera...</div>
+            <div class="progress-bar" id="progressBar" style="display: none;">
+                <div class="progress-fill" id="progressFill">0%</div>
+            </div>
+        </div>
+    </div>
+    
+    <div id="actionButtons" style="margin-top: 20px;">
+        <button class="btn" onclick="startAuthentication()">Authenticate with Face</button>
+        <button class="btn btn-secondary" onclick="checkForRegistration()">Register New Face</button>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let stream = null;
+let matchCount = 0;
+const requiredMatches = 15;
+let matchInterval = null;
+
+async function checkForRegistration() {
+    document.getElementById('registerSection').style.display = 'block';
+    document.getElementById('actionButtons').style.display = 'none';
+}
+
+async function startRegistration() {
+    const name = document.getElementById('userName').value.trim();
+    if (!name) {
+        alert('Please enter your name');
+        return;
+    }
+    
+    document.getElementById('registerForm').style.display = 'none';
+    document.getElementById('videoContainer').style.display = 'block';
+    document.getElementById('statusMessage').innerText = 'Position your face in the frame and hold steady...';
+    
+    await startCamera('register', name);
+}
+
+async function startAuthentication() {
+    document.getElementById('authSection').querySelector('h2').innerText = 'Authentication in Progress';
+    document.getElementById('actionButtons').style.display = 'none';
+    document.getElementById('videoContainer').style.display = 'block';
+    document.getElementById('progressBar').style.display = 'block';
+    
+    await startCamera('auth');
+}
+
+async function startCamera(mode, name = null) {
+    try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        const video = document.getElementById('video');
+        video.srcObject = stream;
+        
+        if (mode === 'register') {
+            setTimeout(() => captureAndRegister(name), 3000);
+        } else if (mode === 'auth') {
+            matchCount = 0;
+            matchInterval = setInterval(captureAndAuthenticate, 200);
+        }
+    } catch (error) {
+        alert('Error accessing camera: ' + error.message);
+    }
+}
+
+function stopCamera() {
+    if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+        stream = null;
+    }
+    if (matchInterval) {
+        clearInterval(matchInterval);
+        matchInterval = null;
+    }
+}
+
+async function captureAndRegister(name) {
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const context = canvas.getContext('2d');
+    
+    // Use higher resolution
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    context.drawImage(video, 0, 0);
+    
+    // Use higher quality JPEG (0.95 quality)
+    const imageData = canvas.toDataURL('image/jpeg', 0.95);
+    
+    document.getElementById('statusMessage').innerText = 'Processing...';
+    
+    try {
+        const response = await fetch('/register_face', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ image: imageData, name: name })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            alert(result.message);
+            stopCamera();
+            document.getElementById('videoContainer').style.display = 'none';
+            document.getElementById('actionButtons').style.display = 'block';
+            document.getElementById('registerSection').style.display = 'none';
+        } else {
+            alert(result.message);
+            setTimeout(() => captureAndRegister(name), 2000);
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+
+async function captureAndAuthenticate() {
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const context = canvas.getContext('2d');
+    
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    context.drawImage(video, 0, 0);
+    
+    const imageData = canvas.toDataURL('image/jpeg');
+    
+    try {
+        const response = await fetch('/authenticate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ image: imageData })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            matchCount++;
+            const progress = Math.min((matchCount / requiredMatches) * 100, 100);
+            document.getElementById('progressFill').style.width = progress + '%';
+            document.getElementById('progressFill').innerText = Math.round(progress) + '%';
+            document.getElementById('statusMessage').innerText = `Match found! Hold steady... (${matchCount}/${requiredMatches})`;
+            
+            if (matchCount >= requiredMatches) {
+                stopCamera();
+                alert(result.message + ' Confidence: ' + result.confidence);
+                // Redirect to modules page
+                window.location.href = '/modules';
+            }
+        } else {
+            matchCount = 0;
+            document.getElementById('progressFill').style.width = '0%';
+            document.getElementById('statusMessage').innerText = 'No match. Please position your face properly...';
+        }
+    } catch (error) {
+        console.error('Auth error:', error);
+    }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}Module 4 - Home{% endblock %}
+{% block header %}Module 4 - Image Stitching & SIFT Features{% endblock %}
+{% block subheader %}Select a Problem{% endblock %}
+
+{% block styles %}
+<style>
+  .main-container { max-width: 1000px; margin: 0 auto; }
+  .breadcrumb { margin-bottom: 30px; color: #666; }
+  .breadcrumb a { color: #667eea; text-decoration: none; }
+  .breadcrumb a:hover { text-decoration: underline; }
+  .module-info { background: #f8f9fa; padding: 25px; border-radius: 10px; margin-bottom: 40px; }
+  .module-info h3 { color: #667eea; margin-bottom: 15px; }
+  .module-info p { color: #666; line-height: 1.8; }
+  .problems-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 25px; margin-top: 30px; }
+  .problem-card { background: white; border: 3px solid #667eea; padding: 30px; border-radius: 15px; box-shadow: 0 5px 20px rgba(0,0,0,0.1); transition: all 0.3s; cursor: pointer; }
+  .problem-card:hover { transform: translateY(-5px); box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3); border-color: #764ba2; }
+  .problem-icon { font-size: 2.5em; margin-bottom: 15px; }
+  .problem-card h3 { color: #667eea; margin-bottom: 12px; font-size: 1.4em; }
+  .problem-card .method { background: #e8f5e9; color: #2e7d32; padding: 6px 12px; border-radius: 20px; display: inline-block; margin-bottom: 12px; font-weight: 600; font-size: 0.9em; }
+  .problem-card p { color: #666; line-height: 1.6; margin: 8px 0; font-size: 0.95em; }
+  .problem-card ul { list-style: none; padding: 0; margin-top: 12px; }
+  .problem-card ul li { padding: 4px 0; color: #666; font-size: 0.9em; }
+  .problem-card ul li:before { content: "✓ "; color: #28a745; font-weight: bold; margin-right: 5px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="main-container">
+  <div class="breadcrumb">
+    <a href="/modules">← Back to All Modules</a> / Module 4
+  </div>
+
+  <div class="module-info">
+    <h3>About Module 4</h3>
+    <p>Image stitching to create panoramas from multiple views, and SIFT feature extraction from scratch with RANSAC optimization. Compare custom implementations with OpenCV and mobile panorama features.</p>
+  </div>
+
+  <h2 style="text-align: center; margin-bottom: 30px;">Select a Problem</h2>
+
+  <div class="problems-grid">
+    <div class="problem-card" onclick="goToProblem(1)">
+      <div class="problem-icon">🖼️</div>
+      <h3>Problem 1</h3>
+      <div class="method">Image Stitching</div>
+      <p>Stitch multiple images to create panoramas. Compare with mobile camera panorama feature.</p>
+      <ul>
+        <li>Upload 4+ images (landscape) or 8+ (portrait)</li>
+        <li>Custom stitching procedure</li>
+        <li>Compare with OpenCV Stitcher</li>
+        <li>Feature matching & homography</li>
+      </ul>
+    </div>
+
+    <div class="problem-card" onclick="goToProblem(2)">
+      <div class="problem-icon">🔑</div>
+      <h3>Problem 2</h3>
+      <div class="method">SIFT Features</div>
+      <p>Extract SIFT features from scratch. Includes RANSAC optimization for robust matching.</p>
+      <ul>
+        <li>Custom SIFT implementation</li>
+        <li>RANSAC optimization</li>
+        <li>Compare with OpenCV SIFT</li>
+        <li>Feature matching visualization</li>
+      </ul>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function goToProblem(problemNum) {
+  window.location.href = '/module4/problem' + problemNum;
+}
+</script>
+{% endblock %}
+

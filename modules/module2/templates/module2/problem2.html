@@ -1,0 +1,195 @@
+{% extends "base.html" %}
+{% block title %}Module 2 - Problem 2{% endblock %}
+{% block header %}Module 2 - Problem 2{% endblock %}
+{% block subheader %}Image Restoration via Fourier{% endblock %}
+
+{% block styles %}
+<style>
+  .main-container { max-width: 1000px; margin: 0 auto; }
+  .upload-section { text-align: center; margin-bottom: 30px; }
+  .upload-box { border: 3px dashed #667eea; border-radius: 10px; padding: 40px; cursor: pointer; transition: background 0.3s; display: inline-block; }
+  .upload-box:hover { background: #f8f9fa; }
+  .image-display { margin: 30px 0; text-align: center; }
+  canvas { 
+    max-width: 100%; 
+    max-height: 70vh; 
+    width: auto; 
+    height: auto; 
+    border-radius: 10px; 
+    box-shadow: 0 5px 15px rgba(0,0,0,0.2); 
+    display: block; 
+    margin: 0 auto; 
+    image-rendering: -webkit-optimize-contrast;
+    image-rendering: auto;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="main-container">
+  <div style="margin-bottom: 20px;">
+    <a href="/module2" class="btn"> Back to Module 2</a>
+    <a href="/modules" class="btn"> All Modules</a>
+  </div>
+
+  <h2>Instructions</h2>
+  <ol style="line-height: 1.8; margin-bottom: 20px;">
+    <li>Upload an image <strong>L</strong></li>
+    <li>System applies Gaussian blur to create <strong>L_b</strong></li>
+    <li>Click <strong>Restore Image</strong> to retrieve <strong>L</strong> from <strong>L_b</strong> using Fourier Transform</li>
+    <li>Compare Original (L) vs Blurred (L_b) vs Restored (L)</li>
+  </ol>
+  <p style="background: #fff3cd; padding: 10px; border-radius: 5px; margin-bottom: 20px;">
+    <strong>Enhanced Method:</strong> Uses adaptive Wiener Filter with image-adaptive regularization, 
+    Richardson-Lucy iterative refinement, and advanced post-processing in LAB color space. 
+    Works generically for portraits, objects, landscapes, and various image types with different resolutions.
+  </p>
+
+  <div class="upload-section">
+    <div class="upload-box" onclick="document.getElementById('restoreInput').click()">
+      <h3> Upload Image</h3>
+      <p>JPG / PNG / JPEG</p>
+      <input type="file" id="restoreInput" accept="image/*" style="display:none" onchange="handleFileUpload(event)">
+    </div>
+  </div>
+
+  <div class="image-display" id="previewSection" style="display:none;">
+    <h3>Original Image</h3>
+    <canvas id="origPreview"></canvas>
+  </div>
+
+  <div style="text-align:center; margin: 20px 0;">
+    <button id="restoreBtn" class="btn btn-success" onclick="restoreImage()" disabled> Restore Image</button>
+    <button class="btn btn-secondary" onclick="resetAll()">Reset All</button>
+  </div>
+
+  <div class="image-display" id="resultSection" style="display:none;">
+    <h3>Original vs Blurred vs Restored</h3>
+    <div style="display:flex; flex-wrap:wrap; gap:20px; justify-content:center;">
+      <div><canvas id="origCanvas"></canvas><p style="text-align:center; margin-top:5px;">Original</p></div>
+      <div><canvas id="blurCanvas"></canvas><p style="text-align:center; margin-top:5px;">Blurred</p></div>
+      <div><canvas id="restCanvas"></canvas><p style="text-align:center; margin-top:5px;">Restored</p></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let uploadedImage = null;
+
+function handleFileUpload(e){
+  const f = e.target.files[0]; if(!f) return;
+  const r = new FileReader();
+  r.onload = (ev)=>{
+    const img = new Image();
+    img.onload = ()=>{
+      uploadedImage = ev.target.result;
+      const c = document.getElementById('origPreview');
+      const ctx = c.getContext('2d');
+      
+      // Calculate display size
+      const maxDisplayWidth = Math.min(window.innerWidth * 0.9, img.width);
+      const maxDisplayHeight = Math.min(window.innerHeight * 0.7, img.height);
+      const scaleX = maxDisplayWidth / img.width;
+      const scaleY = maxDisplayHeight / img.height;
+      const displayScale = Math.min(scaleX, scaleY, 1.0);
+      
+      c.style.width = (img.width * displayScale) + 'px';
+      c.style.height = (img.height * displayScale) + 'px';
+      c.width = img.width;
+      c.height = img.height;
+      
+      // Enable high-quality image smoothing
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      
+      ctx.drawImage(img,0,0);
+      
+      document.getElementById('previewSection').style.display='block';
+      document.getElementById('restoreBtn').disabled = false;
+      document.getElementById('resultSection').style.display='none';
+    };
+    img.src = ev.target.result;
+  };
+  r.readAsDataURL(f);
+}
+
+async function restoreImage(){
+  try{
+    const resp = await fetch('/module2/api/restore_image', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ image: uploadedImage })
+    });
+    const res = await resp.json();
+    if(res.success){
+      const oc = document.getElementById('origCanvas');
+      const bc = document.getElementById('blurCanvas');
+      const rc = document.getElementById('restCanvas');
+
+      const o = new Image(); o.onload=()=>{ 
+        const maxW = Math.min(window.innerWidth * 0.28, o.width);
+        const maxH = Math.min(window.innerHeight * 0.7, o.height);
+        const s = Math.min(maxW/o.width, maxH/o.height, 1.0);
+        oc.style.width = (o.width*s) + 'px'; oc.style.height = (o.height*s) + 'px';
+        oc.width = o.width; oc.height = o.height; 
+        const octx = oc.getContext('2d');
+        octx.imageSmoothingEnabled = true;
+        octx.imageSmoothingQuality = 'high';
+        octx.drawImage(o,0,0); 
+      }; o.src = res.original_image;
+      
+      const b = new Image(); b.onload=()=>{ 
+        const maxW = Math.min(window.innerWidth * 0.28, b.width);
+        const maxH = Math.min(window.innerHeight * 0.7, b.height);
+        const s = Math.min(maxW/b.width, maxH/b.height, 1.0);
+        bc.style.width = (b.width*s) + 'px'; bc.style.height = (b.height*s) + 'px';
+        bc.width = b.width; bc.height = b.height; 
+        const bctx = bc.getContext('2d');
+        bctx.imageSmoothingEnabled = true;
+        bctx.imageSmoothingQuality = 'high';
+        bctx.drawImage(b,0,0); 
+      }; b.src = res.blurred_image;
+      
+      const r = new Image(); r.onload=()=>{ 
+        const maxW = Math.min(window.innerWidth * 0.28, r.width);
+        const maxH = Math.min(window.innerHeight * 0.7, r.height);
+        const s = Math.min(maxW/r.width, maxH/r.height, 1.0);
+        rc.style.width = (r.width*s) + 'px'; rc.style.height = (r.height*s) + 'px';
+        rc.width = r.width; rc.height = r.height; 
+        const rctx = rc.getContext('2d');
+        rctx.imageSmoothingEnabled = true;
+        rctx.imageSmoothingQuality = 'high';
+        rctx.drawImage(r,0,0); 
+      }; r.src = res.restored_image;
+
+      document.getElementById('previewSection').style.display='none';
+      document.getElementById('resultSection').style.display='block';
+    } else {
+      alert('Error: ' + (res.error || 'Restoration failed.'));
+    }
+  }catch(err){ alert('Error: '+err.message); }
+}
+
+function resetAll() {
+  if(confirm('Reset everything and start over?')) {
+    uploadedImage = null;
+    
+    const canvases = ['origPreview', 'origCanvas', 'blurCanvas', 'restCanvas'];
+    canvases.forEach(id => {
+      const c = document.getElementById(id);
+      if(c) {
+        const ctx = c.getContext('2d');
+        ctx.clearRect(0, 0, c.width, c.height);
+      }
+    });
+    
+    document.getElementById('previewSection').style.display = 'none';
+    document.getElementById('resultSection').style.display = 'none';
+    document.getElementById('restoreInput').value = '';
+    document.getElementById('restoreBtn').disabled = true;
+  }
+}
+</script>
+{% endblock %}

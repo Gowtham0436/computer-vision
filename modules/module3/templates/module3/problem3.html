@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+{% block title %}Module 3 - Problem 3{% endblock %}
+{% block header %}Module 3 - Problem 3{% endblock %}
+{% block subheader %}Object Boundary Detection{% endblock %}
+
+{% block styles %}
+<style>
+  .main-container { max-width: 1200px; margin: 0 auto; }
+  .upload-section { text-align: center; margin-bottom: 30px; }
+  .upload-box { border: 3px dashed #667eea; border-radius: 10px; padding: 40px; cursor: pointer; transition: background 0.3s; display: inline-block; }
+  .upload-box:hover { background: #f8f9fa; }
+  .image-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin: 30px 0; }
+  .image-card { background: white; padding: 15px; border-radius: 10px; box-shadow: 0 3px 10px rgba(0,0,0,0.1); }
+  .image-card h4 { margin: 0 0 10px 0; color: #667eea; }
+  canvas, img { 
+    max-width: 100%; 
+    max-height: 400px; 
+    width: auto; 
+    height: auto; 
+    border-radius: 8px; 
+    box-shadow: 0 3px 10px rgba(0,0,0,0.2); 
+    display: block; 
+    margin: 0 auto; 
+    image-rendering: -webkit-optimize-contrast;
+    image-rendering: auto;
+  }
+  .method-selector { background: #f8f9fa; padding: 20px; border-radius: 10px; margin: 20px 0; }
+  .method-selector label { margin-right: 15px; font-weight: 500; }
+  .method-selector input[type="radio"] { margin-right: 5px; }
+  .results-section { background: #e8f5e9; padding: 20px; border-radius: 10px; margin-top: 20px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="main-container">
+  <div style="margin-bottom: 20px;">
+    <a href="/module3" class="btn">← Back to Module 3</a>
+    <a href="/modules" class="btn">All Modules</a>
+  </div>
+
+  <h2>Problem 3: Object Boundary Detection</h2>
+  <ol style="line-height: 1.8; margin-bottom: 20px;">
+    <li>Upload an image containing an object</li>
+    <li>Select detection method (Contour or Watershed)</li>
+    <li>Click <strong>Detect Boundary</strong> to find exact object boundaries</li>
+    <li>View boundary visualization and metrics (area, perimeter)</li>
+  </ol>
+
+  <div class="upload-section">
+    <div class="upload-box" onclick="document.getElementById('imageInput').click()">
+      <h3>📤 Upload Image</h3>
+      <p>JPG / PNG / JPEG</p>
+      <input type="file" id="imageInput" accept="image/*" style="display:none" onchange="handleFileUpload(event)">
+    </div>
+  </div>
+
+  <div class="method-selector">
+    <h3>Detection Method</h3>
+    <label><input type="radio" name="method" value="contour" checked> Contour Detection</label>
+    <label><input type="radio" name="method" value="watershed"> Watershed Algorithm</label>
+  </div>
+
+  <div style="text-align:center; margin: 20px 0;">
+    <button id="detectBtn" class="btn btn-success" onclick="detectBoundary()" disabled>Detect Boundary</button>
+    <button class="btn btn-secondary" onclick="resetAll()">Reset All</button>
+  </div>
+
+  <div id="resultsSection" style="display:none;">
+    <h3>Boundary Detection Results</h3>
+    <div class="image-grid">
+      <div class="image-card">
+        <h4>Original Image</h4>
+        <img id="originalImg" alt="Original">
+      </div>
+      <div class="image-card">
+        <h4>Detected Boundary</h4>
+        <img id="boundaryImg" alt="Boundary">
+      </div>
+      <div class="image-card">
+        <h4>Boundary Overlay</h4>
+        <img id="overlayImg" alt="Overlay">
+      </div>
+    </div>
+    <div class="results-section">
+      <div><strong>Boundary Area:</strong> <span id="area">0</span> pixels²</div>
+      <div><strong>Boundary Perimeter:</strong> <span id="perimeter">0</span> pixels</div>
+      <div><strong>Boundary Points:</strong> <span id="pointsCount">0</span> points</div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let uploadedImage = null;
+
+function handleFileUpload(e) {
+  const f = e.target.files[0];
+  if(!f) return;
+  const r = new FileReader();
+  r.onload = (ev) => {
+    uploadedImage = ev.target.result;
+    document.getElementById('detectBtn').disabled = false;
+    document.getElementById('resultsSection').style.display = 'none';
+  };
+  r.readAsDataURL(f);
+}
+
+async function detectBoundary() {
+  try {
+    const method = document.querySelector('input[name="method"]:checked').value;
+    const resp = await fetch('/module3/api/detect_boundary', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ 
+        image: uploadedImage,
+        method: method
+      })
+    });
+    const res = await resp.json();
+    if(res.success) {
+      document.getElementById('originalImg').src = res.original_image;
+      document.getElementById('boundaryImg').src = res.boundary;
+      document.getElementById('overlayImg').src = res.boundary_overlay;
+      document.getElementById('area').innerText = res.area ? res.area.toFixed(2) : 'N/A';
+      document.getElementById('perimeter').innerText = res.perimeter ? res.perimeter.toFixed(2) : 'N/A';
+      document.getElementById('pointsCount').innerText = res.boundary_points ? res.boundary_points.length : 0;
+      document.getElementById('resultsSection').style.display = 'block';
+    } else {
+      alert('Error: ' + (res.error || 'Boundary detection failed'));
+    }
+  } catch(err) {
+    alert('Error: ' + err.message);
+  }
+}
+
+function resetAll() {
+  if(confirm('Reset everything and start over?')) {
+    uploadedImage = null;
+    document.getElementById('imageInput').value = '';
+    document.getElementById('resultsSection').style.display = 'none';
+    document.getElementById('detectBtn').disabled = true;
+  }
+}
+</script>
+{% endblock %}
+

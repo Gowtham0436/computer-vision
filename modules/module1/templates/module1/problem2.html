@@ -1,0 +1,423 @@
+{% extends "base.html" %}
+
+{% block title %}Module 1 - Problem 2{% endblock %}
+{% block header %}Module 1 - Problem 2{% endblock %}
+{% block subheader %}Two-Point Click Method{% endblock %}
+
+{% block styles %}
+<style>
+    .main-container {
+        max-width: 1000px;
+        margin: 0 auto;
+    }
+    
+    .upload-section {
+        text-align: center;
+        margin-bottom: 30px;
+    }
+    
+    .upload-box {
+        border: 3px dashed #667eea;
+        border-radius: 10px;
+        padding: 40px;
+        cursor: pointer;
+        transition: background 0.3s;
+    }
+    
+    .upload-box:hover {
+        background: #f8f9fa;
+    }
+    
+    .image-display {
+        margin: 30px 0;
+        text-align: center;
+    }
+    
+    #displayImage {
+        max-width: 100%;
+        max-height: 70vh;
+        width: auto;
+        height: auto;
+        border-radius: 10px;
+        box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        cursor: crosshair;
+        display: block;
+        margin: 0 auto;
+        image-rendering: -webkit-optimize-contrast;
+        image-rendering: auto;
+    }
+    
+    .image-wrapper {
+        position: relative;
+        display: inline-block;
+        max-width: 100%;
+    }
+    
+    .params-section {
+        background: #f8f9fa;
+        padding: 20px;
+        border-radius: 10px;
+        margin: 20px 0;
+    }
+    
+    .param-group {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+        margin-top: 15px;
+    }
+    
+    .param-item label {
+        display: block;
+        margin-bottom: 5px;
+        color: #666;
+        font-weight: 500;
+    }
+    
+    .param-item input {
+        width: 100%;
+        padding: 8px;
+        border: 2px solid #ddd;
+        border-radius: 5px;
+    }
+    
+    .results-section {
+        background: #e8f5e9;
+        padding: 20px;
+        border-radius: 10px;
+        margin: 20px 0;
+    }
+    
+    .result-item {
+        margin: 10px 0;
+        font-size: 18px;
+    }
+    
+    .result-item strong {
+        color: #2e7d32;
+    }
+    
+    .measurement-history {
+        background: #fff3cd;
+        padding: 20px;
+        border-radius: 10px;
+        margin: 20px 0;
+    }
+    
+    .history-item {
+        border-bottom: 1px solid #ddd;
+        padding: 10px 0;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="main-container">
+    <div style="margin-bottom: 20px;">
+        <a href="/module1" class="btn"> Back to Module 1</a>
+        <a href="/modules" class="btn"> All Modules</a>
+    </div>
+    
+    <h2>Instructions</h2>
+    <ol style="line-height: 2;">
+        <li>Upload an image of the object you want to measure</li>
+        <li>Adjust camera parameters if needed (default values provided)</li>
+        <li>Click TWO points on the image (opposite corners of the object)</li>
+        <li>The system will automatically calculate dimensions after the second click</li>
+        <li>You can make multiple measurements on the same image</li>
+    </ol>
+    
+    <div class="upload-section">
+        <div class="upload-box" onclick="document.getElementById('fileInput').click()">
+            <h3> Click to Upload Image</h3>
+            <p>Supports: JPG, PNG, JPEG</p>
+            <input type="file" id="fileInput" accept="image/*" style="display: none;" onchange="handleFileUpload(event)">
+        </div>
+    </div>
+    
+    <div class="params-section">
+        <h3>Camera Parameters</h3>
+        <div class="param-group">
+            <div class="param-item">
+                <label>fx (Focal Length X)</label>
+                <input type="number" id="fx" value="4024.75034" step="0.001">
+            </div>
+            <div class="param-item">
+                <label>fy (Focal Length Y)</label>
+                <input type="number" id="fy" value="4021.56657" step="0.001">
+            </div>
+            <div class="param-item">
+                <label>cx (Principal Point X)</label>
+                <input type="number" id="cx" value="2132.83332" step="0.001">
+            </div>
+            <div class="param-item">
+                <label>cy (Principal Point Y)</label>
+                <input type="number" id="cy" value="2880.51288" step="0.001">
+            </div>
+            <div class="param-item">
+                <label>Distance Z (mm)</label>
+                <input type="number" id="z" value="300" step="1">
+            </div>
+        </div>
+    </div>
+    
+    <div class="image-display" id="imageContainer" style="display: none;">
+        <h3 id="clickInstruction">Click TWO points on the image (Point 1/2)</h3>
+        <div class="image-wrapper">
+            <canvas id="displayImage"></canvas>
+        </div>
+        <div style="margin-top: 20px;">
+            <button class="btn" onclick="resetPoints()">Reset Points</button>
+            <button class="btn btn-secondary" onclick="clearAll()">Clear All Measurements</button>
+            <button class="btn btn-warning" onclick="resetAll()">Reset All</button>
+        </div>
+    </div>
+    
+    <div class="results-section" id="resultsSection" style="display: none;">
+        <h3> Current Measurement</h3>
+        <div class="result-item">
+            <strong>Width:</strong> <span id="widthMm">0</span> mm (<span id="widthInch">0</span> inches)
+        </div>
+        <div class="result-item">
+            <strong>Height:</strong> <span id="heightMm">0</span> mm (<span id="heightInch">0</span> inches)
+        </div>
+    </div>
+    
+    <div class="measurement-history" id="historySection" style="display: none;">
+        <h3> Measurement History</h3>
+        <div id="historyContent"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let uploadedImage = null;
+let originalImage = null;
+let canvas = null;
+let ctx = null;
+let points = [];
+let measurements = [];
+
+let imageScale2 = 1.0;
+
+function handleFileUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const img = new Image();
+        img.onload = function() {
+            uploadedImage = e.target.result;
+            originalImage = img;
+            canvas = document.getElementById('displayImage');
+            ctx = canvas.getContext('2d');
+            
+            // Calculate display size to fit screen
+            const maxDisplayWidth = Math.min(window.innerWidth * 0.9, img.width);
+            const maxDisplayHeight = Math.min(window.innerHeight * 0.7, img.height);
+            
+            const scaleX = maxDisplayWidth / img.width;
+            const scaleY = maxDisplayHeight / img.height;
+            imageScale2 = Math.min(scaleX, scaleY, 1.0);
+            
+            // Set canvas display size (CSS)
+            canvas.style.width = (img.width * imageScale2) + 'px';
+            canvas.style.height = (img.height * imageScale2) + 'px';
+            
+            // Set canvas internal size (for drawing)
+            canvas.width = img.width;
+            canvas.height = img.height;
+            
+            // Enable high-quality image smoothing
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+            
+            ctx.drawImage(img, 0, 0);
+            
+            document.getElementById('imageContainer').style.display = 'block';
+            points = [];
+            measurements = [];
+            document.getElementById('resultsSection').style.display = 'none';
+            document.getElementById('historySection').style.display = 'none';
+            
+            setupCanvasEvents();
+        };
+        img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+}
+
+function setupCanvasEvents() {
+    canvas.onclick = handleCanvasClick;
+}
+
+async function handleCanvasClick(e) {
+    const rect = canvas.getBoundingClientRect();
+    // Convert display coordinates to actual image coordinates
+    const x = (e.clientX - rect.left) * (canvas.width / rect.width);
+    const y = (e.clientY - rect.top) * (canvas.height / rect.height);
+    
+    points.push({x: x, y: y});
+    
+    // Redraw with points
+    ctx.drawImage(originalImage, 0, 0);
+    
+    // Draw all points (scale point size)
+    const pointRadius = Math.max(6, 8 / imageScale2);
+    const fontSize = Math.max(12, 14 / imageScale2);
+    for (let i = 0; i < points.length; i++) {
+        ctx.fillStyle = '#f00';
+        ctx.beginPath();
+        ctx.arc(points[i].x, points[i].y, pointRadius, 0, 2 * Math.PI);
+        ctx.fill();
+        ctx.fillStyle = '#fff';
+        ctx.font = fontSize + 'px Arial';
+        ctx.fillText('P' + (i + 1), points[i].x + 12, points[i].y + 5);
+    }
+    
+    // Update instruction
+    if (points.length === 1) {
+        document.getElementById('clickInstruction').innerText = 'Click second point (Point 2/2)';
+    } else if (points.length === 2) {
+        document.getElementById('clickInstruction').innerText = 'Calculating...';
+        await calculateFromPoints();
+    }
+}
+
+async function calculateFromPoints() {
+    const params = {
+        fx: parseFloat(document.getElementById('fx').value),
+        fy: parseFloat(document.getElementById('fy').value),
+        cx: parseFloat(document.getElementById('cx').value),
+        cy: parseFloat(document.getElementById('cy').value),
+        z: parseFloat(document.getElementById('z').value)
+    };
+    
+    try {
+        const response = await fetch('/module1/api/calculate_points', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                image: uploadedImage,
+                point1: points[0],
+                point2: points[1],
+                params: params
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            // Show results
+            document.getElementById('widthMm').innerText = result.width_mm;
+            document.getElementById('widthInch').innerText = result.width_inches;
+            document.getElementById('heightMm').innerText = result.height_mm;
+            document.getElementById('heightInch').innerText = result.height_inches;
+            document.getElementById('resultsSection').style.display = 'block';
+            
+            // Add to history
+            measurements.push({
+                num: measurements.length + 1,
+                p1: points[0],
+                p2: points[1],
+                width_mm: result.width_mm,
+                height_mm: result.height_mm,
+                width_inches: result.width_inches,
+                height_inches: result.height_inches
+            });
+            
+            updateHistory();
+            
+            // Load annotated image
+            const img = new Image();
+            img.onload = function() {
+                ctx.drawImage(img, 0, 0);
+            };
+            img.src = result.annotated_image;
+            
+            document.getElementById('clickInstruction').innerText = 'Measurement complete! Click anywhere to measure again.';
+            
+            // Reset points for next measurement
+            points = [];
+        } else {
+            alert('Error: ' + result.error);
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+
+function updateHistory() {
+    if (measurements.length === 0) {
+        document.getElementById('historySection').style.display = 'none';
+        return;
+    }
+    
+    document.getElementById('historySection').style.display = 'block';
+    let html = '';
+    
+    for (let m of measurements) {
+        html += `
+            <div class="history-item">
+                <strong>Measurement #${m.num}</strong><br>
+                Point 1: (${Math.round(m.p1.x)}, ${Math.round(m.p1.y)})<br>
+                Point 2: (${Math.round(m.p2.x)}, ${Math.round(m.p2.y)})<br>
+                Width: ${m.width_mm} mm (${m.width_inches} inches)<br>
+                Height: ${m.height_mm} mm (${m.height_inches} inches)
+            </div>
+        `;
+    }
+    
+    document.getElementById('historyContent').innerHTML = html;
+}
+
+function resetPoints() {
+    points = [];
+    ctx.drawImage(originalImage, 0, 0);
+    document.getElementById('clickInstruction').innerText = 'Click TWO points on the image (Point 1/2)';
+    document.getElementById('resultsSection').style.display = 'none';
+}
+
+function clearAll() {
+    points = [];
+    measurements = [];
+    ctx.drawImage(originalImage, 0, 0);
+    document.getElementById('clickInstruction').innerText = 'Click TWO points on the image (Point 1/2)';
+    document.getElementById('resultsSection').style.display = 'none';
+    document.getElementById('historySection').style.display = 'none';
+}
+
+function resetAll() {
+    if(confirm('Reset everything and start over?')) {
+        // Reset all variables
+        uploadedImage = null;
+        originalImage = null;
+        points = [];
+        measurements = [];
+        
+        // Clear canvas
+        if(canvas && ctx) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+        
+        // Hide sections
+        document.getElementById('imageContainer').style.display = 'none';
+        document.getElementById('resultsSection').style.display = 'none';
+        document.getElementById('historySection').style.display = 'none';
+        
+        // Reset file input
+        document.getElementById('fileInput').value = '';
+        
+        // Reset instruction
+        document.getElementById('clickInstruction').innerText = 'Click TWO points on the image (Point 1/2)';
+        
+        // Remove event listeners
+        if(canvas) {
+            canvas.onclick = null;
+        }
+    }
+}
+</script>
+{% endblock %}
