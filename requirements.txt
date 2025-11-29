@@ -27,8 +27,9 @@ scikit-image>=0.22.0
 python-dateutil>=2.8.2
 requests>=2.31.0  # For downloading face recognition models
 
-# Pose and Hand Tracking (Module 7)
-mediapipe>=0.10.0  # For pose estimation and hand tracking
+# Pose and Hand Tracking (Module 7) - Optional, comment out if deployment fails
+# mediapipe>=0.10.0  # For pose estimation and hand tracking
+# Note: MediaPipe has Python version compatibility issues. Install manually if needed for Module 7.
 
 # Production server (required for deployment)
 gunicorn==21.2.0
