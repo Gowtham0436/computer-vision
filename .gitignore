@@ -61,5 +61,6 @@ models/*.onnx
 
 # Keep deployment files
 !.github/
-!Dockerfile
-!.dockerignore
+!Procfile
+!render.yaml
+!runtime.txt
