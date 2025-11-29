@@ -33,9 +33,10 @@ ENV FLASK_APP=app.py
 ENV FLASK_ENV=production
 ENV PYTHONUNBUFFERED=1
 
-# Expose port
-EXPOSE $PORT
+# Expose port (Fly.io sets PORT automatically)
+EXPOSE 8080
 
 # Run with Gunicorn
-CMD exec gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --threads 2 --timeout 120
+# Fly.io sets PORT environment variable automatically
+CMD exec gunicorn app:app --bind 0.0.0.0:${PORT:-8080} --workers 2 --threads 2 --timeout 120 --access-logfile - --error-logfile -
 

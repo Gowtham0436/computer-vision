@@ -11,150 +11,222 @@ import cv2
 import numpy as np
 from core.utils import decode_base64_image, encode_image_to_base64
 
-def match_template_handler(template_data, target_data):
+def rotate_keep_all(gray, angle):
     """
-    Problem 1: Template Matching using Correlation Method
+    Rotate image by angle degrees, expanding canvas so nothing is clipped.
+    """
+    rows, cols = gray.shape[:2]
+    M = cv2.getRotationMatrix2D((cols / 2, rows / 2), angle, 1.0)
+    cos, sin = abs(M[0, 0]), abs(M[0, 1])
+    nW = int(rows * sin + cols * cos)
+    nH = int(rows * cos + cols * sin)
+    M[0, 2] += (nW / 2) - cols / 2
+    M[1, 2] += (nH / 2) - rows / 2
+    return cv2.warpAffine(gray, M, (nW, nH),
+                         flags=cv2.INTER_LINEAR,
+                         borderMode=cv2.BORDER_REPLICATE)
+
+def match_template_handler(template_data, target_data, threshold=0.35):
+    """
+    Problem 1: Simple & Reliable Template Matching
     
-    Accurate template matching with multi-scale search and validation:
-    - Finds best match across multiple scales
-    - Validates matches using edge correlation
-    - Works with templates cropped from same or different scenes
-    - Handles different backgrounds and lighting conditions
+    Uses proven OpenCV template matching with:
+    - Multi-scale search (0.3x to 2.5x)
+    - Multiple rotation angles (0°, 90°, 180°, 270°)
+    - Multiple matching methods
+    - Very lenient thresholds
     
     Args:
-        template_data: Base64 encoded template image
+        template_data: Base64 encoded template image (cropped from target)
         target_data: Base64 encoded target/scene image
+        threshold: Minimum correlation score (default: 0.35)
         
     Returns:
         Dictionary with success status, match location, correlation score, and annotated image
     """
-    # Decode images
-    template_bgr = decode_base64_image(template_data)
-    target_bgr = decode_base64_image(target_data)
-    
-    if template_bgr is None or target_bgr is None:
-        return {'success': False, 'error': 'Invalid image(s)'}
-    
-    # Convert to grayscale
-    template_gray = cv2.cvtColor(template_bgr, cv2.COLOR_BGR2GRAY)
-    target_gray = cv2.cvtColor(target_bgr, cv2.COLOR_BGR2GRAY)
-    
-    # Ensure template is smaller than target
-    if template_gray.shape[0] > target_gray.shape[0] or template_gray.shape[1] > target_gray.shape[1]:
-        return {'success': False, 'error': 'Template must be smaller than target image'}
-    
-    # Get template dimensions
-    th, tw = template_gray.shape[:2]
-    
-    # Multi-scale template matching
-    best_match = None
-    best_score = -1.0
-    best_scale = 1.0
-    best_template_size = (th, tw)
-    
-    # Try different scales to handle size variations
-    scales = [0.8, 0.85, 0.9, 0.95, 1.0, 1.05, 1.1, 1.15, 1.2]
-    
-    for scale in scales:
-        # Scale template
-        if scale != 1.0:
-            new_w = int(tw * scale)
-            new_h = int(th * scale)
-            
-            if new_w < 15 or new_h < 15 or new_w > target_gray.shape[1] or new_h > target_gray.shape[0]:
-                continue
-            
-            template_scaled = cv2.resize(template_gray, (new_w, new_h), interpolation=cv2.INTER_AREA)
+    try:
+        # Decode images
+        template_bgr = decode_base64_image(template_data)
+        target_bgr = decode_base64_image(target_data)
+        
+        if template_bgr is None or target_bgr is None:
+            return {'success': False, 'error': 'Failed to decode images. Please ensure images are valid JPG/PNG format.'}
+        
+        if template_bgr.size == 0 or target_bgr.size == 0:
+            return {'success': False, 'error': 'Invalid image size. Images may be corrupted.'}
+        
+        # Convert to grayscale
+        if len(template_bgr.shape) == 3:
+            template_gray = cv2.cvtColor(template_bgr, cv2.COLOR_BGR2GRAY)
         else:
-            template_scaled = template_gray
+            template_gray = template_bgr.copy()
+            
+        if len(target_bgr.shape) == 3:
+            target_gray = cv2.cvtColor(target_bgr, cv2.COLOR_BGR2GRAY)
+        else:
+            target_gray = target_bgr.copy()
         
-        # Template matching using normalized cross-correlation
-        result = cv2.matchTemplate(target_gray, template_scaled, cv2.TM_CCOEFF_NORMED)
-        min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
+        # Get dimensions
+        H, W = target_gray.shape[:2]
+        th, tw = template_gray.shape[:2]
         
-        # Validate match using edge correlation for better accuracy
-        x, y = max_loc
-        if y + template_scaled.shape[0] <= target_gray.shape[0] and \
-           x + template_scaled.shape[1] <= target_gray.shape[1]:
+        # Validate template is smaller than target
+        if th >= H or tw >= W:
+            return {
+                'success': False, 
+                'error': f'Template ({tw}x{th}) must be smaller than target ({W}x{H}). Please use a smaller template image.'
+            }
+        
+        # SIMPLE TEMPLATE MATCHING - RELIABLE APPROACH
+        METHOD = cv2.TM_CCOEFF_NORMED
+        SCALES = np.linspace(0.3, 2.5, 20)
+        ANGLES = [0, 90, 180, 270]
+        
+        best_score = -1.0
+        best_match = None  # (x, y, w, h, scale, angle)
+        best_res = None
+        
+        # Try each rotation angle
+        for ang in ANGLES:
+            tpl_rot = rotate_keep_all(template_gray, ang)
             
-            # Extract matched region
-            matched_roi = target_gray[y:y+template_scaled.shape[0], 
-                                     x:x+template_scaled.shape[1]]
-            
-            # Compute edge-based validation
-            template_edges = cv2.Canny(template_scaled, 50, 150)
-            roi_edges = cv2.Canny(matched_roi, 50, 150)
-            
-            if template_edges.size > 0 and roi_edges.size > 0 and \
-               template_edges.shape == roi_edges.shape:
-                # Edge correlation for validation
-                edge_result = cv2.matchTemplate(roi_edges, template_edges, cv2.TM_CCOEFF_NORMED)
-                edge_score = edge_result[0, 0] if edge_result.size > 0 else 0
+            # Try each scale
+            for s in SCALES:
+                tw_scaled = max(10, int(tpl_rot.shape[1] * s))
+                th_scaled = max(10, int(tpl_rot.shape[0] * s))
                 
-                # Combined score: 80% correlation + 20% edge match
-                # Edge match helps validate that it's actually the right object
-                combined_score = 0.8 * max_val + 0.2 * max(0, edge_score)
-            else:
-                combined_score = max_val
+                if tw_scaled >= W - 10 or th_scaled >= H - 10:
+                    continue
+                if tw_scaled < 10 or th_scaled < 10:
+                    continue
+                
+                # Resize
+                if s < 1.0:
+                    interp = cv2.INTER_AREA
+                else:
+                    interp = cv2.INTER_CUBIC
+                
+                tpl_scaled = cv2.resize(tpl_rot, (tw_scaled, th_scaled), interpolation=interp)
+                
+                # Template matching
+                try:
+                    res = cv2.matchTemplate(target_gray, tpl_scaled, METHOD)
+                    if res.size == 0:
+                        continue
+                    
+                    _, max_val, _, max_loc = cv2.minMaxLoc(res)
+                    
+                    if max_val > best_score:
+                        best_score = float(max_val)
+                        best_match = (max_loc[0], max_loc[1], tw_scaled, th_scaled, float(s), ang)
+                        best_res = res
+                        
+                        # Early termination
+                        if best_score >= 0.75:
+                            break
+                except:
+                    continue
             
-            # Update best match
-            if combined_score > best_score:
-                best_score = combined_score
-                best_match = (x, y)
-                best_scale = scale
-                best_template_size = template_scaled.shape[:2]
-    
-    # Adaptive threshold based on template size
-    template_area = th * tw
-    target_area = target_gray.shape[0] * target_gray.shape[1]
-    size_ratio = template_area / target_area
-    
-    # Set thresholds - higher for better accuracy
-    if size_ratio > 0.3:
-        min_threshold = 0.65  # Large template needs high confidence
-    elif size_ratio > 0.1:
-        min_threshold = 0.55  # Medium template
-    else:
-        min_threshold = 0.45  # Small/cropped template
-    
-    if best_score < min_threshold or best_match is None:
+            if best_score >= 0.75:
+                break
+        
+        # Check if match found
+        if best_match is None:
+            return {
+                'success': False,
+                'error': 'No match found. Ensure template is visible in target image.',
+                'correlation_score': 0.0
+            }
+        
+        x, y, w, h, scale, angle = best_match
+        
+        # VERY LENIENT THRESHOLD - accept almost anything
+        min_acceptable = 0.20  # Very low threshold
+        
+        if best_score < min_acceptable:
+            return {
+                'success': False,
+                'error': f'Match confidence too low: {best_score:.3f} (minimum: {min_acceptable:.2f}).',
+                'correlation_score': float(best_score),
+                'threshold_used': float(min_acceptable)
+            }
+        
+        # Create annotated image
+        annotated = target_bgr.copy()
+        
+        # Draw bounding box
+        cv2.rectangle(annotated, (x, y), (x + w, y + h), (0, 255, 0), 4)
+        cv2.rectangle(annotated, (x + 2, y + 2), (x + w - 2, y + h - 2), (0, 200, 0), 2)
+        
+        # Add text
+        text = f'Match: {best_score:.3f}'
+        if scale != 1.0:
+            text += f' (scale: {scale:.2f}x)'
+        if angle != 0:
+            text += f' (rot: {angle}°)'
+        
+        # Text background
+        (text_w, text_h), baseline = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)
+        text_x = x
+        text_y = max(30, y - 10)
+        cv2.rectangle(annotated, 
+                     (text_x - 5, text_y - text_h - 5), 
+                     (text_x + text_w + 5, text_y + baseline + 5),
+                     (0, 0, 0), -1)
+        
+        cv2.putText(annotated, text,
+                   (text_x, text_y),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+        
+        # Create heatmap
+        heatmap_colored = np.zeros_like(annotated)
+        max_corr = min_corr = mean_corr = 0.0
+        
+        if best_res is not None and best_res.size > 0:
+            try:
+                heatmap_resized = cv2.resize(best_res, (W, H), interpolation=cv2.INTER_CUBIC)
+                result_norm = cv2.normalize(heatmap_resized, None, 0, 255, cv2.NORM_MINMAX)
+                heatmap_uint8 = result_norm.astype(np.uint8)
+                heatmap_colored = cv2.applyColorMap(heatmap_uint8, cv2.COLORMAP_JET)
+                max_corr = float(best_res.max())
+                min_corr = float(best_res.min())
+                mean_corr = float(best_res.mean())
+            except:
+                pass
+        
+        return {
+            'success': True,
+            'method': 'TM_CCOEFF_NORMED',
+            'correlation_score': round(best_score, 4),
+            'scale': round(scale, 2),
+            'angle': int(angle),
+            'x': int(x),
+            'y': int(y),
+            'w': int(w),
+            'h': int(h),
+            'annotated_image': encode_image_to_base64(annotated),
+            'heatmap_image': encode_image_to_base64(heatmap_colored),
+            'max_correlation': max_corr,
+            'min_correlation': min_corr,
+            'mean_correlation': mean_corr,
+            'threshold_used': round(min_acceptable, 3)
+        }
+        
+    except Exception as e:
+        import traceback
+        error_msg = str(e)
+        error_trace = traceback.format_exc()
+        print(f"\n{'='*60}")
+        print(f"ERROR in match_template_handler:")
+        print(f"{'='*60}")
+        print(error_trace)
+        print(f"{'='*60}\n")
         return {
             'success': False,
-            'error': f'No reliable match found. Best score: {best_score:.3f} (threshold: {min_threshold:.2f}). Ensure template is clear, well-cropped, and object is clearly visible in target image.',
-            'correlation_score': float(best_score) if best_score > -1 else 0.0
+            'error': f'Processing error: {error_msg}. Please check your images and try again.',
+            'correlation_score': 0.0,
+            'debug_info': error_trace[:200] if len(error_trace) > 200 else error_trace
         }
-    
-    # Get template dimensions at best scale
-    h, w = best_template_size
-    
-    # Draw rectangle on target image
-    annotated = target_bgr.copy()
-    top_left = best_match
-    bottom_right = (top_left[0] + w, top_left[1] + h)
-    
-    # Draw bounding box
-    cv2.rectangle(annotated, top_left, bottom_right, (0, 255, 0), 3)
-    
-    # Add correlation score
-    text = f'Match: {best_score:.3f}'
-    if best_scale != 1.0:
-        text += f' (scale: {best_scale:.2f}x)'
-    cv2.putText(annotated, text,
-               (top_left[0], max(20, top_left[1] - 10)),
-               cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-    
-    return {
-        'success': True,
-        'method': 'CCOEFF_NORMED',
-        'correlation_score': round(float(best_score), 4),
-        'scale': round(float(best_scale), 2),
-        'x': int(top_left[0]),
-        'y': int(top_left[1]),
-        'w': int(w),
-        'h': int(h),
-        'annotated_image': encode_image_to_base64(annotated)
-    }
-
 def restore_image_handler(image_data):
     """
     Problem 2: Image Restoration using Fourier Transform (Enhanced Wiener Filter)

@@ -1,0 +1,26 @@
+# Minimal requirements for PythonAnywhere Free Tier
+# Optimized to reduce disk usage
+
+# Core Web Framework (lightweight)
+Flask==3.0.0
+Werkzeug==3.0.1
+
+# Computer Vision (essential only)
+opencv-python-headless==4.8.1.78  # Headless version saves ~50MB
+numpy>=1.24.3,<2.0.0
+Pillow>=10.1.0
+
+# Image Processing (minimal)
+scipy>=1.11.4
+scikit-image>=0.22.0
+
+# Utilities
+python-dateutil>=2.8.2
+requests>=2.31.0
+
+# Pose and Hand Tracking (Module 7) - Optional, can be removed if not needed
+# mediapipe>=0.10.0  # Comment out if disk space is tight (~35MB)
+
+# Note: opencv-contrib-python removed to save space
+# Note: gunicorn not needed (PythonAnywhere uses WSGI)
+

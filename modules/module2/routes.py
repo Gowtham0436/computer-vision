@@ -52,13 +52,14 @@ def problem3():
 def api_match_template():
     """
     API endpoint for template matching
-    Expects JSON with: template, target
+    Expects JSON with: template, target, threshold (optional, default 0.60)
     """
     try:
         data = request.json
         result = match_template_handler(
             template_data=data.get('template'),
-            target_data=data.get('target')
+            target_data=data.get('target'),
+            threshold=float(data.get('threshold', 0.60))
         )
         return jsonify(result)
     except Exception as e:

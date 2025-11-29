@@ -2,31 +2,50 @@
 
 Flask web application for CSc 8830 Computer Vision assignments with multiple modules for image processing, computer vision algorithms, and real-time tracking.
 
-## 🚀 Quick Deploy (No Credit Card Needed)
+## 🚀 Free Deployment Options
 
-### Option 1: PythonAnywhere (Recommended - Always On)
-1. Sign up at https://www.pythonanywhere.com (free, no card)
-2. Upload code or clone from GitHub
-3. Create Flask web app
-4. Set WSGI to: `from app import app as application`
-5. Done! See `DEPLOY.md` for details
+### Option 1: PythonAnywhere (Recommended - Easiest)
 
-### Option 2: Fly.io (Best Performance)
-1. Install: `curl -L https://fly.io/install.sh | sh`
-2. Sign up: `fly auth signup` (no card needed)
-3. Deploy: `fly launch` (uses Dockerfile)
-4. Done! See `DEPLOY.md` for details
+**100% Free, No Credit Card Required!**
 
-### Option 3: Render (Requires Card)
-1. Go to https://render.com
-2. Create Web Service → Connect GitHub
-3. Use Python 3 (not Docker)
-4. Build: `pip install -r requirements.txt && pip install gunicorn`
-5. Start: `gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --threads 2 --timeout 120`
-6. Add env: `SECRET_KEY` (generate with Python)
-7. Done!
+1. Sign up at [pythonanywhere.com](https://www.pythonanywhere.com)
+2. Follow the complete guide: **`PYTHONANYWHERE_DEPLOY.md`**
+3. Quick start: **`PYTHONANYWHERE_QUICK_START.txt`**
 
-## 📦 Installation (Local)
+Your app will be live at: `https://yourusername.pythonanywhere.com`
+
+**Perfect for free tier - optimized for 512MB disk space!**
+
+### Option 2: Fly.io (Alternative)
+
+### Step 1: Install Fly CLI
+```bash
+curl -L https://fly.io/install.sh | sh
+```
+
+### Step 2: Sign Up (No Credit Card Needed!)
+```bash
+fly auth signup
+```
+
+### Step 3: Deploy
+```bash
+# In your project directory
+fly launch
+
+# Set environment variables
+fly secrets set SECRET_KEY=$(python -c "import secrets; print(secrets.token_hex(32))")
+fly secrets set FLASK_ENV=production
+
+# Deploy!
+fly deploy
+```
+
+Your app will be live at: `https://your-app-name.fly.dev`
+
+**See `DEPLOY.md` for detailed instructions.**
+
+## 📦 Local Development
 
 ```bash
 # Create virtual environment
@@ -61,7 +80,7 @@ App runs at: http://localhost:5000
 
 - `SECRET_KEY`: Flask secret key (required for production)
 - `FLASK_ENV`: `production` or `development`
-- `PORT`: Server port (auto-set by hosting platforms)
+- `PORT`: Server port (auto-set by Fly.io)
 
 ## 🐛 Troubleshooting
 
@@ -71,7 +90,7 @@ App runs at: http://localhost:5000
 
 ## 📚 Documentation
 
-- `DEPLOY.md` - Detailed deployment guide for all platforms
+- `DEPLOY.md` - Fly.io deployment guide
 - See individual module folders for module-specific documentation
 
 ## 📄 License

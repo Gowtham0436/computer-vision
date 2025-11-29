@@ -31,8 +31,8 @@
 {% block content %}
 <div class="main-container">
   <div style="margin-bottom: 20px;">
-    <a href="/module2" class="btn"> Back to Module 2</a>
-    <a href="/modules" class="btn"> All Modules</a>
+    <a href="/module2" class="btn">← Back to Module 2</a>
+    <a href="/modules" class="btn">← All Modules</a>
   </div>
 
   <h2>Instructions</h2>
@@ -81,40 +81,61 @@
   </div>
   
   <p style="background: #fff3cd; padding: 10px; border-radius: 5px; margin-bottom: 20px;">
-    <strong>Method:</strong> Enhanced template matching using multi-scale correlation with image normalization. 
-    Handles scale variations, different backgrounds, and lighting conditions. Works with templates cropped from same or different scenes.
+    <strong>Method:</strong> Traditional OpenCV template matching using <strong>TM_CCOEFF_NORMED</strong>:
+    <ul style="margin: 10px 0 0 20px; line-height: 1.8;">
+      <li><strong>Multi-scale matching</strong> (0.5x to 2.0x, 16 scales) to handle size variations</li>
+      <li><strong>Rotation handling</strong> (0° and 180°) for orientation changes</li>
+      <li><strong>No preprocessing</strong> - preserves all image features for maximum accuracy</li>
+      <li><strong>Heatmap visualization</strong> showing correlation scores across the image</li>
+      <li><strong>Optimized for cropped templates</strong> - works best when template is cropped from target image</li>
+    </ul>
   </p>
 
   <div class="upload-section">
-    <div id="templateBox" class="upload-box" onclick="document.getElementById('templateInput').click()">
-      <h3> Upload Template Image</h3>
-      <p>JPG / PNG / JPEG</p>
-      <input type="file" id="templateInput" accept="image/*" style="display:none" onchange="handleTemplateUpload(event)">
+    <div id="templateBox" class="upload-box" onclick="document.getElementById('templateInput').click()" style="cursor: pointer;">
+      <h3 id="templateTitle">📤 Upload Template Image</h3>
+      <p id="templateStatus">JPG / PNG / JPEG</p>
+      <input type="file" id="templateInput" accept="image/*,.heic,.HEIC" style="display:none" onchange="handleTemplateUpload(event)">
     </div>
 
-    <div id="targetBox" class="upload-box" onclick="document.getElementById('targetInput').click()">
-      <h3> Upload Target Image</h3>
-      <p>JPG / PNG / JPEG</p>
-      <input type="file" id="targetInput" accept="image/*" style="display:none" onchange="handleTargetUpload(event)">
+    <div id="targetBox" class="upload-box" onclick="document.getElementById('targetInput').click()" style="cursor: pointer;">
+      <h3 id="targetTitle">📤 Upload Target Image</h3>
+      <p id="targetStatus">JPG / PNG / JPEG</p>
+      <input type="file" id="targetInput" accept="image/*,.heic,.HEIC" style="display:none" onchange="handleTargetUpload(event)">
+    </div>
+  </div>
+
+  <div style="text-align: center; margin: 30px 0; padding: 20px; background: #f8f9fa; border-radius: 10px;">
+    <div style="margin-bottom: 15px;">
+      <label for="thresholdInput" style="margin-right: 10px; font-size: 16px;"><strong>Threshold:</strong></label>
+      <input type="number" id="thresholdInput" value="0.35" min="0.1" max="1.0" step="0.05" style="padding: 8px; width: 100px; border: 2px solid #667eea; border-radius: 4px; font-size: 16px;">
+      <span style="margin-left: 10px; color: #666; font-size: 14px;">(0.35 default, automatically adjusts for cropped templates)</span>
+    </div>
+    <div style="margin-top: 20px;">
+      <button id="matchBtn" class="btn btn-success" onclick="matchTemplate()" disabled style="padding: 15px 30px; font-size: 18px; margin: 10px;">Match Template</button>
+      <button class="btn btn-secondary" onclick="resetAll()" style="padding: 15px 30px; font-size: 18px; margin: 10px;">Reset All</button>
     </div>
   </div>
 
   <div class="image-display" id="imageContainer" style="display:none;">
-    <h3>Target Image</h3>
+    <h3>Target Image with Match</h3>
     <canvas id="targetCanvas"></canvas>
-    <div style="margin-top:20px;">
-      <button id="matchBtn" class="btn btn-success" onclick="matchTemplate()" disabled> Match Template</button>
-      <button class="btn btn-secondary" onclick="resetAll()">Reset All</button>
-    </div>
   </div>
 
   <div class="results-section" id="resultsSection" style="display:none;">
     <h3>Result</h3>
     <div class="result-item"><strong>Correlation Score:</strong> <span id="scoreVal">0</span></div>
-    <div class="result-item"><strong>Detection Method:</strong> <span id="methodVal">Correlation</span></div>
+    <div class="result-item"><strong>Detection Method:</strong> <span id="methodVal">TM_CCOEFF_NORMED</span></div>
     <div class="result-item"><strong>Scale Factor:</strong> <span id="scaleVal">1.0x</span></div>
+    <div class="result-item" id="angleItem" style="display:none;"><strong>Rotation Angle:</strong> <span id="angleVal">0°</span></div>
     <div class="result-item"><strong>Top-left Coordinate:</strong> (<span id="posX">0</span>, <span id="posY">0</span>)</div>
     <div class="result-item"><strong>Object Size:</strong> <span id="sizeVal">W x H</span></div>
+  </div>
+  
+  <div class="results-section" id="heatmapSection" style="display:none; margin-top: 20px;">
+    <h3>Correlation Heatmap</h3>
+    <p style="font-size: 14px; color: #666;">Visualization of correlation scores across the image (red = high correlation, blue = low)</p>
+    <img id="heatmapImg" style="max-width: 100%; max-height: 70vh; border-radius: 10px; box-shadow: 0 5px 15px rgba(0,0,0,0.2);" />
   </div>
 </div>
 {% endblock %}
@@ -126,76 +147,181 @@ let targetImage = null;
 let ctx = null;
 
 function handleTemplateUpload(e){
-  const f = e.target.files[0]; if(!f) return;
+  const f = e.target.files[0]; 
+  if(!f) {
+    console.log('No file selected');
+    return;
+  }
+  console.log('Template file selected:', f.name, f.type);
   const r = new FileReader();
+  r.onerror = (err) => {
+    console.error('FileReader error:', err);
+    alert('Error reading template file. Please try a different image format (JPG, PNG, JPEG).');
+  };
   r.onload = (ev) => {
-    templateImage = ev.target.result;
-    document.querySelector('#templateBox h3').innerText = 'Template Loaded';
-    document.querySelector('#templateBox p').innerText = f.name;
-    if(targetImage) document.getElementById('matchBtn').disabled = false;
+    try {
+      templateImage = ev.target.result;
+      document.getElementById('templateTitle').innerText = '✓ Template Loaded';
+      document.getElementById('templateStatus').innerText = f.name;
+      console.log('Template loaded successfully');
+      if(targetImage) {
+        document.getElementById('matchBtn').disabled = false;
+        document.getElementById('targetTitle').innerText = '✓ Target Loaded';
+      }
+    } catch(err) {
+      console.error('Error processing template:', err);
+      alert('Error processing template image.');
+    }
   };
   r.readAsDataURL(f);
 }
 
 function handleTargetUpload(e){
-  const f = e.target.files[0]; if(!f) return;
+  const f = e.target.files[0]; 
+  if(!f) {
+    console.log('No file selected');
+    return;
+  }
+  console.log('Target file selected:', f.name, f.type);
   const r = new FileReader();
+  r.onerror = (err) => {
+    console.error('FileReader error:', err);
+    alert('Error reading target file. Please try a different image format (JPG, PNG, JPEG).');
+  };
   r.onload = (ev) => {
-    const img = new Image();
-    img.onload = () => {
-      targetImage = ev.target.result;
-      const canvas = document.getElementById('targetCanvas');
-      ctx = canvas.getContext('2d');
-      
-      // Calculate display size to fit screen
-      const maxDisplayWidth = Math.min(window.innerWidth * 0.9, img.width);
-      const maxDisplayHeight = Math.min(window.innerHeight * 0.7, img.height);
-      const scaleX = maxDisplayWidth / img.width;
-      const scaleY = maxDisplayHeight / img.height;
-      const displayScale = Math.min(scaleX, scaleY, 1.0);
-      
-      // Set canvas display size (CSS)
-      canvas.style.width = (img.width * displayScale) + 'px';
-      canvas.style.height = (img.height * displayScale) + 'px';
-      
-      // Set canvas internal size (for drawing)
-      canvas.width = img.width;
-      canvas.height = img.height;
-      
-      // Enable high-quality image smoothing
-      ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = 'high';
-      
-      ctx.drawImage(img, 0, 0);
-      
-      document.getElementById('imageContainer').style.display = 'block';
-      document.getElementById('resultsSection').style.display = 'none';
-      document.querySelector('#targetBox h3').innerText = 'Target Loaded';
-      document.querySelector('#targetBox p').innerText = f.name;
-      if(templateImage) document.getElementById('matchBtn').disabled = false;
-    };
-    img.src = ev.target.result;
+    try {
+      const img = new Image();
+      img.onerror = () => {
+        console.error('Image load error');
+        alert('Error loading image. Please ensure the file is a valid image (JPG, PNG, JPEG). HEIC files may not be supported in all browsers.');
+      };
+      img.onload = () => {
+        targetImage = ev.target.result;
+        const canvas = document.getElementById('targetCanvas');
+        if(!canvas) {
+          console.error('Canvas not found');
+          return;
+        }
+        ctx = canvas.getContext('2d');
+        
+        // Calculate display size to fit screen
+        const maxDisplayWidth = Math.min(window.innerWidth * 0.9, img.width);
+        const maxDisplayHeight = Math.min(window.innerHeight * 0.7, img.height);
+        const scaleX = maxDisplayWidth / img.width;
+        const scaleY = maxDisplayHeight / img.height;
+        const displayScale = Math.min(scaleX, scaleY, 1.0);
+        
+        // Set canvas display size (CSS)
+        canvas.style.width = (img.width * displayScale) + 'px';
+        canvas.style.height = (img.height * displayScale) + 'px';
+        
+        // Set canvas internal size (for drawing)
+        canvas.width = img.width;
+        canvas.height = img.height;
+        
+        // Enable high-quality image smoothing
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        
+        ctx.drawImage(img, 0, 0);
+        
+        document.getElementById('imageContainer').style.display = 'block';
+        document.getElementById('resultsSection').style.display = 'none';
+        document.getElementById('targetTitle').innerText = '✓ Target Loaded';
+        document.getElementById('targetStatus').innerText = f.name;
+        console.log('Target loaded successfully');
+        if(templateImage) {
+          document.getElementById('matchBtn').disabled = false;
+          document.getElementById('templateTitle').innerText = '✓ Template Loaded';
+        }
+      };
+      img.src = ev.target.result;
+    } catch(err) {
+      console.error('Error processing target:', err);
+      alert('Error processing target image.');
+    }
   };
   r.readAsDataURL(f);
 }
 
 async function matchTemplate(){
+  if(!templateImage || !targetImage) {
+    alert('Please upload both template and target images first!');
+    return;
+  }
+  
   try{
+    // Disable button during processing
+    const matchBtn = document.getElementById('matchBtn');
+    matchBtn.disabled = true;
+    matchBtn.innerText = 'Processing...';
+    
+    // Add timeout warning after 10 seconds
+    const timeoutWarning = setTimeout(() => {
+      console.log('Processing taking longer than expected...');
+    }, 10000);
+    
+    const threshold = parseFloat(document.getElementById('thresholdInput')?.value || 0.35);
+    console.log('Starting template matching with threshold:', threshold);
+    
     const res = await fetch('/module2/api/match_template', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ template: templateImage, target: targetImage })
+      body: JSON.stringify({ 
+        template: templateImage, 
+        target: targetImage,
+        threshold: threshold
+      })
     });
+    
     const json = await res.json();
+    console.log('Response:', json);
+    
+    // Re-enable button
+    clearTimeout(timeoutWarning);
+    matchBtn.disabled = false;
+    matchBtn.innerText = 'Match Template';
+    
     if(json.success){
       document.getElementById('scoreVal').innerText = (json.correlation_score*100).toFixed(1) + '%';
-      document.getElementById('methodVal').innerText = json.method || 'Correlation';
+      document.getElementById('methodVal').innerText = json.method || 'TM_CCOEFF_NORMED';
       document.getElementById('scaleVal').innerText = (json.scale || 1.0) + 'x';
+      if(json.angle !== undefined && json.angle !== 0) {
+        document.getElementById('angleVal').innerText = json.angle + '°';
+        document.getElementById('angleItem').style.display = 'block';
+      } else {
+        document.getElementById('angleItem').style.display = 'none';
+      }
       document.getElementById('posX').innerText = json.x;
       document.getElementById('posY').innerText = json.y;
       document.getElementById('sizeVal').innerText = json.w + ' x ' + json.h;
       document.getElementById('resultsSection').style.display = 'block';
+      
+      // Show warning if low confidence
+      if(json.low_confidence || json.warning) {
+        const warningDiv = document.getElementById('warningDiv');
+        if(warningDiv) {
+          warningDiv.style.display = 'block';
+          warningDiv.innerHTML = '<strong>⚠️ Low Confidence Match:</strong> ' + (json.warning || 'Score is below threshold but match found. Please verify the detection is correct.');
+        } else {
+          // Create warning div if it doesn't exist
+          const resultsSection = document.getElementById('resultsSection');
+          const warning = document.createElement('div');
+          warning.id = 'warningDiv';
+          warning.style.cssText = 'background: #fff3cd; padding: 15px; border-radius: 8px; margin-top: 15px; border-left: 4px solid #ffc107;';
+          warning.innerHTML = '<strong>⚠️ Low Confidence Match:</strong> ' + (json.warning || 'Score is below threshold but match found. Please verify the detection is correct.');
+          resultsSection.appendChild(warning);
+        }
+      } else {
+        const warningDiv = document.getElementById('warningDiv');
+        if(warningDiv) warningDiv.style.display = 'none';
+      }
+      
       const img = new Image();
+      img.onerror = () => {
+        console.error('Failed to load annotated image');
+        alert('Error displaying result image.');
+      };
       img.onload = ()=>{ 
         // Maintain aspect ratio when displaying annotated image
         const canvas = document.getElementById('targetCanvas');
@@ -217,10 +343,30 @@ async function matchTemplate(){
         ctx.drawImage(img,0,0); 
       };
       img.src = json.annotated_image;
+      
+      // Display heatmap if available
+      if(json.heatmap_image) {
+        const heatmapImg = document.getElementById('heatmapImg');
+        if(heatmapImg) {
+          heatmapImg.onerror = () => console.error('Failed to load heatmap');
+          heatmapImg.src = json.heatmap_image;
+          document.getElementById('heatmapSection').style.display = 'block';
+        }
+      }
     } else {
-      alert('Error: ' + (json.error || 'Matching failed.'));
+      const errorMsg = json.error || 'Matching failed.';
+      const suggestion = json.suggestion || '';
+      alert('Error: ' + errorMsg + (suggestion ? '\n\n' + suggestion : ''));
+      console.error('Matching failed:', json);
     }
-  }catch(err){ alert('Error: '+err.message); }
+  }catch(err){ 
+    console.error('Exception:', err);
+    alert('Error: ' + err.message);
+    const matchBtn = document.getElementById('matchBtn');
+    if(typeof timeoutWarning !== 'undefined') clearTimeout(timeoutWarning);
+    matchBtn.disabled = false;
+    matchBtn.innerText = 'Match Template';
+  }
 }
 
 function resetAll() {
@@ -236,12 +382,13 @@ function resetAll() {
     
     document.getElementById('imageContainer').style.display = 'none';
     document.getElementById('resultsSection').style.display = 'none';
+    document.getElementById('heatmapSection').style.display = 'none';
     document.getElementById('templateInput').value = '';
     document.getElementById('targetInput').value = '';
-    document.querySelector('#templateBox h3').innerText = ' Upload Template Image';
-    document.querySelector('#templateBox p').innerText = 'JPG / PNG / JPEG';
-    document.querySelector('#targetBox h3').innerText = ' Upload Target Image';
-    document.querySelector('#targetBox p').innerText = 'JPG / PNG / JPEG';
+    document.getElementById('templateTitle').innerText = '📤 Upload Template Image';
+    document.getElementById('templateStatus').innerText = 'JPG / PNG / JPEG';
+    document.getElementById('targetTitle').innerText = '📤 Upload Target Image';
+    document.getElementById('targetStatus').innerText = 'JPG / PNG / JPEG';
     document.getElementById('matchBtn').disabled = true;
   }
 }

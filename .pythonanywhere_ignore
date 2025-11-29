@@ -1,0 +1,71 @@
+# Files to exclude when uploading to PythonAnywhere
+# This helps save disk space on the free tier
+
+# Virtual environments
+cvenv/
+venv/
+env/
+ENV/
+.venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Large model files (will be downloaded on first run)
+models/*.onnx
+face_encodings.pkl
+*.pkl
+
+# Temporary uploads (will be created on server)
+uploads/*
+!uploads/.gitkeep
+static/outputs/*
+!static/outputs/.gitkeep
+
+# Documentation (keep only essential)
+*.md
+!README.md
+!PYTHONANYWHERE_DEPLOY.md
+
+# Docker files (not needed for PythonAnywhere)
+Dockerfile
+.dockerignore
+
+# Git files
+.git/
+.gitignore
+
+# Environment files
+.env
+.env.local
+
+# Logs
+*.log
+
+# Backup files
+*_backup.py
+handlers_backup.py
+
+# Refactored project folder
+refactored_project/
+

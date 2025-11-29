@@ -61,8 +61,5 @@ models/*.onnx
 
 # Keep deployment files
 !.github/
-!Procfile
 !Dockerfile
-!runtime.txt
-!render.yaml
-!railway.json
+!.dockerignore
