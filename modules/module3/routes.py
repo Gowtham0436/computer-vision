@@ -81,7 +81,8 @@ def api_detect_edges():
         result = detect_edges_handler(
             image_data=data.get('image'),
             threshold1=data.get('threshold1', 50),
-            threshold2=data.get('threshold2', 150)
+            threshold2=data.get('threshold2', 150),
+            edge_auto=data.get('edge_auto', True)
         )
         return jsonify(result)
     except Exception as e:
@@ -111,7 +112,14 @@ def api_detect_boundary():
         data = request.json
         result = detect_boundary_handler(
             image_data=data.get('image'),
-            method=data.get('method', 'contour')
+            method=data.get('method', 'contour'),
+            close_k=data.get('close_k', 5),
+            min_area_pct=data.get('min_area_pct', 2),
+            eps_pct=data.get('eps_pct', 1.5),
+            center_r=data.get('center_r', 40),
+            edge_low=data.get('edge_low', 20),
+            edge_high=data.get('edge_high', 60),
+            edge_auto=data.get('edge_auto', True)
         )
         return jsonify(result)
     except Exception as e:

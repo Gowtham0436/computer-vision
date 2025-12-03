@@ -12,7 +12,7 @@
   .image-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin: 30px 0; }
   .image-card { background: white; padding: 15px; border-radius: 10px; box-shadow: 0 3px 10px rgba(0,0,0,0.1); }
   .image-card h4 { margin: 0 0 10px 0; color: #667eea; }
-  canvas, img { 
+  img { 
     max-width: 100%; 
     max-height: 400px; 
     width: auto; 
@@ -21,13 +21,12 @@
     box-shadow: 0 3px 10px rgba(0,0,0,0.2); 
     display: block; 
     margin: 0 auto; 
-    image-rendering: -webkit-optimize-contrast;
-    image-rendering: auto;
   }
   .method-selector { background: #f8f9fa; padding: 20px; border-radius: 10px; margin: 20px 0; }
   .method-selector label { margin-right: 15px; font-weight: 500; }
   .method-selector input[type="radio"] { margin-right: 5px; }
   .results-section { background: #e8f5e9; padding: 20px; border-radius: 10px; margin-top: 20px; }
+  .loading { text-align: center; padding: 20px; color: #667eea; }
 </style>
 {% endblock %}
 
@@ -52,6 +51,7 @@
       <p>JPG / PNG / JPEG</p>
       <input type="file" id="imageInput" accept="image/*" style="display:none" onchange="handleFileUpload(event)">
     </div>
+    <p id="fileName3" style="text-align: center; margin-top: 10px; color: #666; font-size: 0.9em; display: none;"></p>
   </div>
 
   <div class="method-selector">
@@ -63,6 +63,14 @@
   <div style="text-align:center; margin: 20px 0;">
     <button id="detectBtn" class="btn btn-success" onclick="detectBoundary()" disabled>Detect Boundary</button>
     <button class="btn btn-secondary" onclick="resetAll()">Reset All</button>
+  </div>
+
+  <div id="loadingSection" style="display:none;" class="loading">
+    <p>Processing image... Please wait.</p>
+  </div>
+
+  <div id="errorSection" style="display:none;" class="alert alert-error">
+    <p id="errorMessage"></p>
   </div>
 
   <div id="resultsSection" style="display:none;">
@@ -91,172 +99,84 @@
 {% endblock %}
 
 {% block scripts %}
-<!-- OpenCV.js -->
-<script src="https://docs.opencv.org/4.x/opencv.js" 
-  onload="if(window.initModule3Problem3) initModule3Problem3();"
-  onerror="console.error('Failed to load OpenCV.js')"></script>
-
-<!-- Assignment 3 Core Logic -->
-<script src="{{ url_for('static', filename='js/module3/assignment3_core.js') }}?v=1.0" 
-  onload="console.log('assignment3_core.js loaded successfully');"
-  onerror="console.error('Failed to load assignment3_core.js'); alert('Failed to load required JavaScript file. Please refresh the page.');"></script>
-
 <script>
-let cvReady = false;
-let srcMat = null;
-let uploadedImage = null;
-
-// Verify functions are loaded
-window.addEventListener('load', function() {
-  if (typeof boundaryContour === 'undefined') {
-    console.error('boundaryContour function not found after page load');
-  } else {
-    console.log('boundaryContour function is available');
-  }
-});
-
-// Wait for OpenCV to load
-function waitForCV() {
-  return new Promise((resolve) => {
-    if (window.cv && typeof window.cv.Mat === 'function') {
-      cvReady = true;
-      resolve();
-      return;
-    }
-    window.cv = window.cv || {};
-    window.cv.onRuntimeInitialized = () => {
-      cvReady = true;
-      resolve();
-    };
-    const intv = setInterval(() => {
-      if (window.cv && typeof window.cv.Mat === 'function') {
-        clearInterval(intv);
-        cvReady = true;
-        resolve();
-      }
-    }, 50);
-  });
-}
-
-function matToDataURL(mat) {
-  const canvas = document.createElement('canvas');
-  canvas.width = mat.cols;
-  canvas.height = mat.rows;
-  cv.imshow(canvas, mat);
-  return canvas.toDataURL('image/png');
-}
+let imageBase64 = null;
 
 function handleFileUpload(e) {
-  const f = e.target.files[0];
-  if(!f) return;
-  const r = new FileReader();
-  r.onload = async (ev) => {
-    uploadedImage = ev.target.result;
-    await waitForCV();
+  const file = e.target.files[0];
+  if (!file) return;
+  
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    const dataUrl = ev.target.result;
+    imageBase64 = dataUrl.split(',')[1];
     document.getElementById('detectBtn').disabled = false;
     document.getElementById('resultsSection').style.display = 'none';
+    document.getElementById('errorSection').style.display = 'none';
+    // Show filename
+    document.getElementById('fileName3').textContent = `Uploaded: ${file.name}`;
+    document.getElementById('fileName3').style.display = 'block';
   };
-  r.readAsDataURL(f);
+  reader.readAsDataURL(file);
 }
 
 async function detectBoundary() {
-  if (!cvReady) {
-    await waitForCV();
-  }
-  
-  if (!uploadedImage) {
+  if (!imageBase64) {
     alert('Please upload an image first');
     return;
   }
   
-  // Check if boundaryContour function is available
-  if (typeof boundaryContour === 'undefined') {
-    alert('Error: boundaryContour function not loaded. Please refresh the page.');
-    console.error('boundaryContour function is not defined');
-    return;
-  }
+    const method = document.querySelector('input[name="method"]:checked').value;
+  
+  document.getElementById('loadingSection').style.display = 'block';
+  document.getElementById('resultsSection').style.display = 'none';
+  document.getElementById('errorSection').style.display = 'none';
+  document.getElementById('detectBtn').disabled = true;
   
   try {
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0);
-      
-      if (srcMat) srcMat.delete();
-      srcMat = cv.imread(canvas);
-      
-      // Use Assignment 3 boundary detection (contour method)
-      const closeK = 5;
-      const minAreaPct = 2;
-      const epsPct = 1.5;
-      const centerR = 40;
-      const edgeAuto = true;
-      
-      const { out: boundary, info, area, perimeter, points } = boundaryContour(
-        srcMat, closeK, minAreaPct, epsPct, centerR, 20, 60, edgeAuto
-      );
-      
-      // Create boundary-only visualization
-      const boundaryOnly = new cv.Mat();
-      cv.cvtColor(srcMat, boundaryOnly, cv.COLOR_RGBA2RGB);
-      if (points.length > 0) {
-        const contour = new cv.Mat(points.length, 1, cv.CV_32SC2);
-        for (let i = 0; i < points.length; i++) {
-          const ptr = contour.intPtr(i, 0);
-          ptr[0] = points[i].x;
-          ptr[1] = points[i].y;
-        }
-        const mv = new cv.MatVector();
-        mv.push_back(contour);
-        cv.polylines(boundaryOnly, mv, true, new cv.Scalar(0, 255, 0, 255), 3, cv.LINE_AA);
-        mv.delete();
-        contour.delete();
-      }
-      
-      document.getElementById('originalImg').src = uploadedImage;
-      document.getElementById('boundaryImg').src = matToDataURL(boundaryOnly);
-      document.getElementById('overlayImg').src = matToDataURL(boundary);
-      document.getElementById('area').innerText = area ? area.toFixed(2) : 'N/A';
-      document.getElementById('perimeter').innerText = perimeter ? perimeter.toFixed(2) : 'N/A';
-      document.getElementById('pointsCount').innerText = points ? points.length : 0;
+    const response = await fetch('/module3/api/detect_boundary', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        image: imageBase64,
+        method: method
+      })
+    });
+    
+    const result = await response.json();
+    document.getElementById('loadingSection').style.display = 'none';
+    
+    if (result.success) {
+      document.getElementById('originalImg').src = 'data:image/png;base64,' + result.original_image;
+      document.getElementById('boundaryImg').src = 'data:image/png;base64,' + result.boundary;
+      document.getElementById('overlayImg').src = 'data:image/png;base64,' + result.boundary_overlay;
+      document.getElementById('area').textContent = result.area ? result.area.toFixed(2) : 'N/A';
+      document.getElementById('perimeter').textContent = result.perimeter ? result.perimeter.toFixed(2) : 'N/A';
+      document.getElementById('pointsCount').textContent = result.boundary_points ? result.boundary_points.length : 0;
       document.getElementById('resultsSection').style.display = 'block';
-      
-      boundary.delete();
-      boundaryOnly.delete();
-    };
-    img.src = uploadedImage;
-  } catch(err) {
-    alert('Error: ' + err.message);
+    } else {
+      document.getElementById('errorMessage').textContent = result.error || 'An error occurred';
+      document.getElementById('errorSection').style.display = 'block';
+    }
+  } catch (err) {
+    document.getElementById('loadingSection').style.display = 'none';
+    document.getElementById('errorMessage').textContent = 'Error: ' + err.message;
+    document.getElementById('errorSection').style.display = 'block';
     console.error(err);
+  } finally {
+    document.getElementById('detectBtn').disabled = false;
   }
 }
 
 function resetAll() {
-  if(confirm('Reset everything and start over?')) {
-    uploadedImage = null;
-    if (srcMat) {
-      srcMat.delete();
-      srcMat = null;
-    }
+  if (confirm('Reset everything and start over?')) {
+    imageBase64 = null;
     document.getElementById('imageInput').value = '';
     document.getElementById('resultsSection').style.display = 'none';
+    document.getElementById('errorSection').style.display = 'none';
     document.getElementById('detectBtn').disabled = true;
+    document.getElementById('fileName3').style.display = 'none';
   }
-}
-
-function initModule3Problem3() {
-  waitForCV().then(() => {
-    console.log('OpenCV.js ready for Problem 3');
-  });
-}
-
-// Initialize if OpenCV already loaded
-if (window.cv && typeof window.cv.Mat === 'function') {
-  initModule3Problem3();
 }
 </script>
 {% endblock %}
-

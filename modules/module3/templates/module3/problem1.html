@@ -12,7 +12,7 @@
   .image-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin: 30px 0; }
   .image-card { background: white; padding: 15px; border-radius: 10px; box-shadow: 0 3px 10px rgba(0,0,0,0.1); }
   .image-card h4 { margin: 0 0 10px 0; color: #667eea; }
-  canvas, img { 
+  img { 
     max-width: 100%; 
     max-height: 400px; 
     width: auto; 
@@ -21,10 +21,9 @@
     box-shadow: 0 3px 10px rgba(0,0,0,0.2); 
     display: block; 
     margin: 0 auto; 
-    image-rendering: -webkit-optimize-contrast;
-    image-rendering: auto;
   }
   .results-section { background: #e8f5e9; padding: 20px; border-radius: 10px; margin-top: 20px; }
+  .loading { text-align: center; padding: 20px; color: #667eea; }
 </style>
 {% endblock %}
 
@@ -54,11 +53,20 @@
       <p>JPG / PNG / JPEG</p>
       <input type="file" id="imageInput" accept="image/*" style="display:none" onchange="handleFileUpload(event)">
     </div>
+    <p id="fileName1" style="text-align: center; margin-top: 10px; color: #666; font-size: 0.9em; display: none;"></p>
   </div>
 
   <div style="text-align:center; margin: 20px 0;">
     <button id="computeBtn" class="btn btn-success" onclick="computeGradient()" disabled>Compute Gradient & LoG</button>
     <button class="btn btn-secondary" onclick="resetAll()">Reset All</button>
+  </div>
+
+  <div id="loadingSection" style="display:none;" class="loading">
+    <p>Processing image... Please wait.</p>
+  </div>
+
+  <div id="errorSection" style="display:none;" class="alert alert-error">
+    <p id="errorMessage"></p>
   </div>
 
   <div id="resultsSection" style="display:none;">
@@ -86,133 +94,87 @@
 {% endblock %}
 
 {% block scripts %}
-<!-- OpenCV.js -->
-<script src="https://docs.opencv.org/4.x/opencv.js" 
-  onload="if(window.initModule3Problem1) initModule3Problem1();"
-  onerror="console.error('Failed to load OpenCV.js')"></script>
-
-<!-- Assignment 3 Core Logic -->
-<script src="{{ url_for('static', filename='js/module3/assignment3_core.js') }}"></script>
-
 <script>
-let cvReady = false;
-let srcMat = null;
 let uploadedImage = null;
-
-// Wait for OpenCV to load
-function waitForCV() {
-  return new Promise((resolve) => {
-    if (window.cv && typeof window.cv.Mat === 'function') {
-      cvReady = true;
-      resolve();
-      return;
-    }
-    window.cv = window.cv || {};
-    window.cv.onRuntimeInitialized = () => {
-      cvReady = true;
-      resolve();
-    };
-    const intv = setInterval(() => {
-      if (window.cv && typeof window.cv.Mat === 'function') {
-        clearInterval(intv);
-        cvReady = true;
-        resolve();
-      }
-    }, 50);
-  });
-}
-
-function matToDataURL(mat) {
-  const canvas = document.createElement('canvas');
-  canvas.width = mat.cols;
-  canvas.height = mat.rows;
-  cv.imshow(canvas, mat);
-  return canvas.toDataURL('image/png');
-}
+let imageBase64 = null;
 
 function handleFileUpload(e) {
-  const f = e.target.files[0];
-  if(!f) return;
-  const r = new FileReader();
-  r.onload = async (ev) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  
+  const reader = new FileReader();
+  reader.onload = (ev) => {
     uploadedImage = ev.target.result;
-    await waitForCV();
+    imageBase64 = uploadedImage.split(',')[1]; // Remove data:image/...;base64, prefix
     document.getElementById('computeBtn').disabled = false;
     document.getElementById('resultsSection').style.display = 'none';
+    document.getElementById('errorSection').style.display = 'none';
+    // Show filename
+    document.getElementById('fileName1').textContent = `Uploaded: ${file.name}`;
+    document.getElementById('fileName1').style.display = 'block';
   };
-  r.readAsDataURL(f);
+  reader.readAsDataURL(file);
 }
 
 async function computeGradient() {
-  if (!cvReady) {
-    await waitForCV();
-  }
-  
-  if (!uploadedImage) {
+  if (!imageBase64) {
     alert('Please upload an image first');
     return;
   }
   
+  // Show loading, hide results and errors
+  document.getElementById('loadingSection').style.display = 'block';
+  document.getElementById('resultsSection').style.display = 'none';
+  document.getElementById('errorSection').style.display = 'none';
+  document.getElementById('computeBtn').disabled = true;
+  
   try {
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0);
-      
-      if (srcMat) srcMat.delete();
-      srcMat = cv.imread(canvas);
-      
-      // Compute results using Assignment 3 logic
-      const magnitude = gradMagnitudeMat(srcMat);
-      const angle = gradAngleMat(srcMat);
-      const log = logMat(srcMat);
-      
-      // Convert to data URLs
-      document.getElementById('originalImg').src = uploadedImage;
-      document.getElementById('magnitudeImg').src = matToDataURL(magnitude);
-      document.getElementById('angleImg').src = matToDataURL(angle);
-      document.getElementById('logImg').src = matToDataURL(log);
-      
+    const response = await fetch('/module3/api/gradient_log', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        image: imageBase64
+      })
+    });
+    
+    const result = await response.json();
+    
+    document.getElementById('loadingSection').style.display = 'none';
+    
+    if (result.success) {
+      // Display results
+      document.getElementById('originalImg').src = 'data:image/png;base64,' + result.original_image;
+      document.getElementById('magnitudeImg').src = 'data:image/png;base64,' + result.gradient_magnitude;
+      document.getElementById('angleImg').src = 'data:image/png;base64,' + result.gradient_angle;
+      document.getElementById('logImg').src = 'data:image/png;base64,' + result.laplacian_of_gaussian;
       document.getElementById('resultsSection').style.display = 'block';
-      
-      // Cleanup
-      magnitude.delete();
-      angle.delete();
-      log.delete();
-    };
-    img.src = uploadedImage;
-  } catch(err) {
-    alert('Error: ' + err.message);
+    } else {
+      // Show error
+      document.getElementById('errorMessage').textContent = result.error || 'An error occurred';
+      document.getElementById('errorSection').style.display = 'block';
+    }
+  } catch (err) {
+    document.getElementById('loadingSection').style.display = 'none';
+    document.getElementById('errorMessage').textContent = 'Error: ' + err.message;
+    document.getElementById('errorSection').style.display = 'block';
     console.error(err);
+  } finally {
+    document.getElementById('computeBtn').disabled = false;
   }
 }
 
 function resetAll() {
-  if(confirm('Reset everything and start over?')) {
+  if (confirm('Reset everything and start over?')) {
     uploadedImage = null;
-    if (srcMat) {
-      srcMat.delete();
-      srcMat = null;
-    }
+    imageBase64 = null;
     document.getElementById('imageInput').value = '';
     document.getElementById('resultsSection').style.display = 'none';
+    document.getElementById('errorSection').style.display = 'none';
     document.getElementById('computeBtn').disabled = true;
+    document.getElementById('fileName1').style.display = 'none';
   }
-}
-
-function initModule3Problem1() {
-  waitForCV().then(() => {
-    console.log('OpenCV.js ready for Problem 1');
-  });
-}
-
-// Initialize if OpenCV already loaded
-if (window.cv && typeof window.cv.Mat === 'function') {
-  initModule3Problem1();
 }
 </script>
 {% endblock %}
-

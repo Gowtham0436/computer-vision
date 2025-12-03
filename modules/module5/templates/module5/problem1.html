@@ -159,6 +159,10 @@
         <input type="file" id="frame2Input" accept="image/*" style="display:none" onchange="handleFrame2Upload(event)">
       </div>
     </div>
+    <div style="text-align: center; margin-top: 10px;">
+      <p id="fileName5_1" style="color: #666; font-size: 0.9em; display: none; margin: 5px 0;"></p>
+      <p id="fileName5_2" style="color: #666; font-size: 0.9em; display: none; margin: 5px 0;"></p>
+    </div>
     
     <div style="text-align:center; margin: 20px 0;">
       <button id="computeBtn" class="btn btn-success" onclick="computeMotion()" disabled>Compute Motion Estimates</button>
@@ -207,6 +211,9 @@ function handleFrame1Upload(e) {
   const r = new FileReader();
   r.onload = (ev) => {
     frame1 = ev.target.result;
+    // Show filename
+    document.getElementById('fileName5_1').textContent = `Frame 1: ${f.name}`;
+    document.getElementById('fileName5_1').style.display = 'block';
     checkReady();
   };
   r.readAsDataURL(f);
@@ -218,6 +225,9 @@ function handleFrame2Upload(e) {
   const r = new FileReader();
   r.onload = (ev) => {
     frame2 = ev.target.result;
+    // Show filename
+    document.getElementById('fileName5_2').textContent = `Frame 2: ${f.name}`;
+    document.getElementById('fileName5_2').style.display = 'block';
     checkReady();
   };
   r.readAsDataURL(f);
@@ -266,6 +276,8 @@ function resetAll() {
     document.getElementById('frame2Input').value = '';
     document.getElementById('resultsSection').style.display = 'none';
     document.getElementById('computeBtn').disabled = true;
+    document.getElementById('fileName5_1').style.display = 'none';
+    document.getElementById('fileName5_2').style.display = 'none';
   }
 }
 </script>

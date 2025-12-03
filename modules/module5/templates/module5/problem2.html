@@ -81,6 +81,7 @@
         <input type="file" id="markerInput" accept="image/*" style="display:none" onchange="handleMarkerUpload(event)">
       </div>
     </div>
+    <p id="fileName5_2a" style="text-align: center; margin-top: 10px; color: #666; font-size: 0.9em; display: none;"></p>
 
     <div style="text-align:center; margin: 20px 0;">
       <button id="markerBtn" class="btn btn-success" onclick="trackMarker()" disabled>Track Object</button>
@@ -132,6 +133,7 @@
         <input type="file" id="markerlessInput" accept="image/*" style="display:none" onchange="handleMarkerlessUpload(event)">
       </div>
     </div>
+    <p id="fileName5_2b" style="text-align: center; margin-top: 10px; color: #666; font-size: 0.9em; display: none;"></p>
 
     <div id="bboxSelector" class="bbox-selector" style="display:none;">
       <h4>Select Bounding Box</h4>
@@ -187,6 +189,10 @@
         <p>Segmentation mask (image/NPZ)</p>
         <input type="file" id="sam2MaskInput" accept="image/*,.npz" style="display:none" onchange="handleSAM2MaskUpload(event)">
       </div>
+    </div>
+    <div style="text-align: center; margin-top: 10px;">
+      <p id="fileName5_2c" style="color: #666; font-size: 0.9em; display: none; margin: 5px 0;"></p>
+      <p id="fileName5_2d" style="color: #666; font-size: 0.9em; display: none; margin: 5px 0;"></p>
     </div>
 
     <div style="text-align:center; margin: 20px 0;">
@@ -257,6 +263,9 @@ function handleMarkerUpload(e) {
     markerImage = ev.target.result;
     document.getElementById('markerBtn').disabled = false;
     document.getElementById('markerResults').style.display = 'none';
+    // Show filename
+    document.getElementById('fileName5_2a').textContent = `Uploaded: ${f.name}`;
+    document.getElementById('fileName5_2a').style.display = 'block';
   };
   r.readAsDataURL(f);
 }
@@ -269,6 +278,9 @@ function handleMarkerlessUpload(e) {
     markerlessImage = ev.target.result;
     setupBboxSelector(ev.target.result);
     document.getElementById('markerlessResults').style.display = 'none';
+    // Show filename
+    document.getElementById('fileName5_2b').textContent = `Uploaded: ${f.name}`;
+    document.getElementById('fileName5_2b').style.display = 'block';
   };
   r.readAsDataURL(f);
 }
@@ -337,6 +349,9 @@ function handleSAM2ImageUpload(e) {
   const r = new FileReader();
   r.onload = (ev) => {
     sam2Image = ev.target.result;
+    // Show filename
+    document.getElementById('fileName5_2c').textContent = `Original Image: ${f.name}`;
+    document.getElementById('fileName5_2c').style.display = 'block';
     checkSAM2Ready();
   };
   r.readAsDataURL(f);
@@ -347,6 +362,9 @@ function handleSAM2MaskUpload(e) {
   if(!f) return;
   const r = new FileReader();
   r.onload = (ev) => {
+    // Show filename
+    document.getElementById('fileName5_2d').textContent = `SAM2 Mask: ${f.name}`;
+    document.getElementById('fileName5_2d').style.display = 'block';
     sam2Mask = ev.target.result;
     checkSAM2Ready();
   };
@@ -454,6 +472,7 @@ function resetMarker() {
   document.getElementById('markerInput').value = '';
   document.getElementById('markerResults').style.display = 'none';
   document.getElementById('markerBtn').disabled = true;
+  document.getElementById('fileName5_2a').style.display = 'none';
 }
 
 function resetMarkerless() {
@@ -463,6 +482,7 @@ function resetMarkerless() {
   document.getElementById('bboxSelector').style.display = 'none';
   document.getElementById('markerlessResults').style.display = 'none';
   document.getElementById('markerlessBtn').disabled = true;
+  document.getElementById('fileName5_2b').style.display = 'none';
 }
 
 function resetSAM2() {
@@ -472,6 +492,8 @@ function resetSAM2() {
   document.getElementById('sam2MaskInput').value = '';
   document.getElementById('sam2Results').style.display = 'none';
   document.getElementById('sam2Btn').disabled = true;
+  document.getElementById('fileName5_2c').style.display = 'none';
+  document.getElementById('fileName5_2d').style.display = 'none';
 }
 </script>
 {% endblock %}

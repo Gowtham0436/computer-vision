@@ -1,376 +1,420 @@
 """
-Module 7: Business logic handlers
-Assignment 7 Implementation:
-1. Calibrated Stereo Size Estimation
-2. Uncalibrated Stereo Size Estimation (theoretical derivation)
-3. Real-time Pose Estimation and Hand Tracking (MediaPipe/OpenPose)
+Module 7: Stereo Calibration, Pose Estimation, and Hand Tracking
+
+New implementation using the provided classes. Existing handler
+functions are kept so the rest of the app (routes/templates) work
+without changes.
 """
 
 import os
-import cv2
-import numpy as np
 import csv
 from datetime import datetime
+
+import cv2
+import numpy as np
+import mediapipe as mp
+
 from core.utils import decode_base64_image, encode_image_to_base64
 
-def estimate_size_calibrated_stereo_handler(left_image_data, right_image_data, 
-                                           camera_params, object_type='rectangular'):
+
+class StereoCalibration:
+    """Stereo camera calibration and depth estimation"""
+
+    def __init__(self):
+        self.camera_matrix_left = None
+        self.camera_matrix_right = None
+        self.dist_coeffs_left = None
+        self.dist_coeffs_right = None
+        self.R = None  # Rotation matrix
+        self.T = None  # Translation vector
+        self.E = None  # Essential matrix
+        self.F = None  # Fundamental matrix
+        self.baseline = None
+
+    def calibrate_stereo(self, left_images, right_images, pattern_size=(9, 6), square_size=1.0):
+        """
+        Calibrate stereo camera pair.
+        This method is kept for completeness but the web handler uses
+        the compute_disparity/measure_object_size path below.
+        """
+        objp = np.zeros((pattern_size[0] * pattern_size[1], 3), np.float32)
+        objp[:, :2] = np.mgrid[0:pattern_size[0], 0:pattern_size[1]].T.reshape(-1, 2)
+        objp *= square_size
+
+        objpoints = []       # 3D points in real world
+        imgpoints_left = []  # 2D points in left image
+        imgpoints_right = []  # 2D points in right image
+
+        for left_img, right_img in zip(left_images, right_images):
+            gray_left = cv2.cvtColor(left_img, cv2.COLOR_BGR2GRAY)
+            gray_right = cv2.cvtColor(right_img, cv2.COLOR_BGR2GRAY)
+
+            ret_left, corners_left = cv2.findChessboardCorners(gray_left, pattern_size)
+            ret_right, corners_right = cv2.findChessboardCorners(gray_right, pattern_size)
+
+            if ret_left and ret_right:
+                objpoints.append(objp)
+
+                corners_left = cv2.cornerSubPix(
+                    gray_left,
+                    corners_left,
+                    (11, 11),
+                    (-1, -1),
+                    (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001),
+                )
+                corners_right = cv2.cornerSubPix(
+                    gray_right,
+                    corners_right,
+                    (11, 11),
+                    (-1, -1),
+                    (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001),
+                )
+
+                imgpoints_left.append(corners_left)
+                imgpoints_right.append(corners_right)
+
+        if len(objpoints) == 0:
+            return False
+
+        img_shape = left_images[0].shape[:2][::-1]
+
+        _, self.camera_matrix_left, self.dist_coeffs_left, _, _ = cv2.calibrateCamera(
+            objpoints, imgpoints_left, img_shape, None, None
+        )
+
+        _, self.camera_matrix_right, self.dist_coeffs_right, _, _ = cv2.calibrateCamera(
+            objpoints, imgpoints_right, img_shape, None, None
+        )
+
+        flags = cv2.CALIB_FIX_INTRINSIC
+        ret, _, _, _, _, self.R, self.T, self.E, self.F = cv2.stereoCalibrate(
+            objpoints,
+            imgpoints_left,
+            imgpoints_right,
+            self.camera_matrix_left,
+            self.dist_coeffs_left,
+            self.camera_matrix_right,
+            self.dist_coeffs_right,
+            img_shape,
+            flags=flags,
+        )
+
+        self.baseline = np.linalg.norm(self.T)
+        return ret
+
+    def compute_disparity(self, left_image, right_image):
+        """Compute disparity map from stereo pair"""
+        gray_left = cv2.cvtColor(left_image, cv2.COLOR_BGR2GRAY)
+        gray_right = cv2.cvtColor(right_image, cv2.COLOR_BGR2GRAY)
+
+        stereo = cv2.StereoBM_create(numDisparities=16 * 5, blockSize=15)
+        disparity = stereo.compute(gray_left, gray_right)
+
+        disparity_vis = cv2.normalize(disparity, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
+        return disparity, disparity_vis
+
+    def estimate_depth(self, disparity, focal_length=None):
+        """
+        Estimate depth from disparity.
+        Depth = (Focal Length * Baseline) / Disparity
+        """
+        if focal_length is None and self.camera_matrix_left is not None:
+            focal_length = self.camera_matrix_left[0, 0]
+
+        if focal_length is None or self.baseline is None:
+            return None
+
+        depth = np.zeros_like(disparity, dtype=np.float32)
+        valid_disparity = disparity > 0
+        depth[valid_disparity] = (focal_length * self.baseline) / disparity[valid_disparity]
+        return depth
+
+    def measure_object_size(self, left_image, right_image, bbox):
+        """
+        Measure object size using stereo reconstruction.
+        Returns object dimensions (width, height, depth).
+        """
+        disparity, _ = self.compute_disparity(left_image, right_image)
+        depth_map = self.estimate_depth(disparity)
+
+        if depth_map is None:
+            return None
+
+        x, y, w, h = bbox
+        roi_depth = depth_map[y : y + h, x : x + w]
+        roi_valid = roi_depth[roi_depth > 0]
+        if roi_valid.size == 0:
+            return None
+
+        avg_depth = float(np.median(roi_valid))
+        if np.isnan(avg_depth) or avg_depth <= 0:
+            return None
+
+        focal_length = (
+            self.camera_matrix_left[0, 0] if self.camera_matrix_left is not None else 700.0
+        )
+
+        real_width = (w * avg_depth) / focal_length
+        real_height = (h * avg_depth) / focal_length
+
+        return {
+            "width": float(real_width),
+            "height": float(real_height),
+            "depth": avg_depth,
+            "bbox": bbox,
+        }
+
+
+class PoseEstimation:
+    """Real-time pose estimation using Mediapipe"""
+
+    def __init__(self):
+        self.mp_pose = mp.solutions.pose
+        self.mp_drawing = mp.solutions.drawing_utils
+        self.mp_drawing_styles = mp.solutions.drawing_styles
+        self.pose = self.mp_pose.Pose(
+            min_detection_confidence=0.5,
+            min_tracking_confidence=0.5,
+        )
+        self.csv_data = []
+        self.frame_count = 0
+
+    def process_frame(self, frame):
+        """Process frame for pose estimation."""
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        results = self.pose.process(rgb_frame)
+
+        annotated_frame = frame.copy()
+        pose_data = None
+
+        if results.pose_landmarks:
+            self.mp_drawing.draw_landmarks(
+                annotated_frame,
+                results.pose_landmarks,
+                self.mp_pose.POSE_CONNECTIONS,
+                landmark_drawing_spec=self.mp_drawing_styles.get_default_pose_landmarks_style(),
+            )
+
+            pose_data = self.extract_pose_data(results.pose_landmarks, self.frame_count)
+            self.csv_data.append(pose_data)
+            self.frame_count += 1
+
+        return annotated_frame, results.pose_landmarks, pose_data
+
+    def extract_pose_data(self, landmarks, frame_num):
+        """Extract pose data for logging."""
+        data = {"frame": frame_num}
+        for idx, landmark in enumerate(landmarks.landmark):
+            landmark_name = self.mp_pose.PoseLandmark(idx).name
+            data[f"{landmark_name}_x"] = landmark.x
+            data[f"{landmark_name}_y"] = landmark.y
+            data[f"{landmark_name}_z"] = landmark.z
+            data[f"{landmark_name}_visibility"] = landmark.visibility
+        return data
+
+    def save_to_csv(self, filename):
+        """Save collected pose data to CSV file."""
+        if not self.csv_data:
+            return False
+
+        keys = self.csv_data[0].keys()
+        with open(filename, "w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=keys)
+            writer.writeheader()
+            writer.writerows(self.csv_data)
+        return True
+
+    def reset_data(self):
+        self.csv_data = []
+        self.frame_count = 0
+
+
+class HandTracking:
+    """Real-time hand tracking using Mediapipe"""
+
+    def __init__(self):
+        self.mp_hands = mp.solutions.hands
+        self.mp_drawing = mp.solutions.drawing_utils
+        self.mp_drawing_styles = mp.solutions.drawing_styles
+        self.hands = self.mp_hands.Hands(
+            min_detection_confidence=0.5, min_tracking_confidence=0.5, max_num_hands=2
+        )
+        self.csv_data = []
+        self.frame_count = 0
+
+    def process_frame(self, frame):
+        """Process frame for hand tracking."""
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        results = self.hands.process(rgb_frame)
+
+        annotated_frame = frame.copy()
+        hand_data = None
+
+        if results.multi_hand_landmarks:
+            hand_data = {"frame": self.frame_count, "num_hands": len(results.multi_hand_landmarks)}
+
+            for hand_idx, hand_landmarks in enumerate(results.multi_hand_landmarks):
+                self.mp_drawing.draw_landmarks(
+                    annotated_frame,
+                    hand_landmarks,
+                    self.mp_hands.HAND_CONNECTIONS,
+                    self.mp_drawing_styles.get_default_hand_landmarks_style(),
+                    self.mp_drawing_styles.get_default_hand_connections_style(),
+                )
+
+                if results.multi_handedness:
+                    handedness = results.multi_handedness[hand_idx].classification[0].label
+                    hand_data[f"hand_{hand_idx}_type"] = handedness
+
+                for idx, landmark in enumerate(hand_landmarks.landmark):
+                    landmark_name = self.mp_hands.HandLandmark(idx).name
+                    hand_data[f"hand_{hand_idx}_{landmark_name}_x"] = landmark.x
+                    hand_data[f"hand_{hand_idx}_{landmark_name}_y"] = landmark.y
+                    hand_data[f"hand_{hand_idx}_{landmark_name}_z"] = landmark.z
+
+            self.csv_data.append(hand_data)
+            self.frame_count += 1
+
+        return annotated_frame, getattr(results, "multi_hand_landmarks", None), hand_data
+
+    def save_to_csv(self, filename):
+        """Save collected hand data to CSV file."""
+        if not self.csv_data:
+            return False
+
+        all_keys = set()
+        for data in self.csv_data:
+            all_keys.update(data.keys())
+        keys = sorted(all_keys)
+
+        with open(filename, "w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=keys)
+            writer.writeheader()
+            writer.writerows(self.csv_data)
+        return True
+
+    def reset_data(self):
+        self.csv_data = []
+        self.frame_count = 0
+
+
+# ----------------------------------------------------------------------
+# Global instances used by the Flask handlers
+# ----------------------------------------------------------------------
+
+_stereo = StereoCalibration()
+_pose = PoseEstimation()
+_hands = HandTracking()
+
+
+def estimate_size_calibrated_stereo_handler(left_image_data, right_image_data, camera_params, object_type="rectangular"):
     """
-    Problem 1: Calibrated Stereo Size Estimation
-    
-    Estimates object size using calibrated stereo vision.
-    First estimates distance (Z) using stereo, then calculates object dimensions.
-    
-    Args:
-        left_image_data: Base64 encoded left stereo image
-        right_image_data: Base64 encoded right stereo image
-        camera_params: Dictionary with camera parameters (fx, fy, cx, cy, baseline)
-        object_type: 'rectangular', 'circular', or 'polygon'
-        
-    Returns:
-        Dictionary with distance estimate and object dimensions
+    Problem 1: Calibrated Stereo Size Estimation using the new StereoCalibration class.
     """
     left_img = decode_base64_image(left_image_data)
     right_img = decode_base64_image(right_image_data)
     
     if left_img is None or right_img is None:
-        return {'success': False, 'error': 'Invalid image(s)'}
+        return {"success": False, "error": "Invalid image(s)"}
     
-    # Convert to grayscale
-    left_gray = cv2.cvtColor(left_img, cv2.COLOR_BGR2GRAY) if len(left_img.shape) == 3 else left_img
-    right_gray = cv2.cvtColor(right_img, cv2.COLOR_BGR2GRAY) if len(right_img.shape) == 3 else right_img
-    
-    # Stereo matching to compute disparity
-    stereo = cv2.StereoBM_create(numDisparities=16, blockSize=15)
-    disparity = stereo.compute(left_gray, right_gray)
-    
-    # Normalize disparity for visualization
-    disparity_vis = cv2.normalize(disparity, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
-    disparity_colored = cv2.applyColorMap(disparity_vis, cv2.COLORMAP_JET)
-    
-    # Extract camera parameters
-    fx = camera_params.get('fx', 1000.0)
-    fy = camera_params.get('fy', 1000.0)
-    cx = camera_params.get('cx', left_img.shape[1] / 2)
-    cy = camera_params.get('cy', left_img.shape[0] / 2)
-    baseline = camera_params.get('baseline', 0.1)  # in meters
-    
-    # For object size estimation, we need to:
-    # 1. Select object region in left image
-    # 2. Find corresponding points in right image
-    # 3. Compute disparity
-    # 4. Calculate Z (distance) using: Z = (fx * baseline) / disparity
-    # 5. Calculate real-world dimensions using: X = (x - cx) * Z / fx, Y = (y - cy) * Z / fy
-    
-    # For demonstration, we'll use the center region of the image
-    h, w = left_gray.shape
-    center_x, center_y = w // 2, h // 2
+    # Build a simple intrinsic matrix from provided camera params
+    fx = float(camera_params.get("fx", 1000.0))
+    fy = float(camera_params.get("fy", fx))
+    cx = float(camera_params.get("cx", left_img.shape[1] / 2))
+    cy = float(camera_params.get("cy", left_img.shape[0] / 2))
+    baseline = float(camera_params.get("baseline", 0.1))
+
+    _stereo.camera_matrix_left = np.array([[fx, 0, cx], [0, fy, cy], [0, 0, 1]], dtype=np.float32)
+    _stereo.baseline = baseline
+
+    disparity, disparity_vis = _stereo.compute_disparity(left_img, right_img)
+
+    h, w = left_img.shape[:2]
     roi_size = min(w, h) // 4
-    
-    # Extract ROI
-    roi_left = left_gray[center_y - roi_size:center_y + roi_size,
-                        center_x - roi_size:center_x + roi_size]
-    
-    # Find corresponding region in right image (simplified - in practice use feature matching)
-    # For now, assume same region (this would be improved with proper stereo matching)
-    roi_right = right_gray[center_y - roi_size:center_y + roi_size,
-                          center_x - roi_size:center_x + roi_size]
-    
-    # Compute average disparity in ROI
-    roi_disparity = disparity[center_y - roi_size:center_y + roi_size,
-                             center_x - roi_size:center_x + roi_size]
-    valid_disparity = roi_disparity[roi_disparity > 0]
-    
-    if len(valid_disparity) == 0:
-        return {'success': False, 'error': 'No valid disparity found. Ensure stereo images are properly aligned.'}
-    
-    avg_disparity = np.mean(valid_disparity)
-    
-    # Calculate distance Z
-    if avg_disparity > 0:
-        Z = (fx * baseline) / avg_disparity
-    else:
-        return {'success': False, 'error': 'Invalid disparity value'}
-    
-    # Calculate object dimensions based on type
-    dimensions = {}
-    
-    if object_type == 'rectangular':
-        # Estimate width and height
-        # Using ROI dimensions in pixels
-        pixel_width = roi_size * 2
-        pixel_height = roi_size * 2
-        
-        # Convert to real-world dimensions
-        real_width = (pixel_width * Z) / fx
-        real_height = (pixel_height * Z) / fy
-        
-        dimensions = {
-            'width_mm': real_width * 1000,
-            'height_mm': real_height * 1000,
-            'width_inches': real_width * 39.3701,
-            'height_inches': real_height * 39.3701
+    center_x, center_y = w // 2, h // 2
+    x = max(0, center_x - roi_size)
+    y = max(0, center_y - roi_size)
+    w_roi = min(roi_size * 2, w - x)
+    h_roi = min(roi_size * 2, h - y)
+    bbox = (x, y, w_roi, h_roi)
+
+    size_info = _stereo.measure_object_size(left_img, right_img, bbox)
+    if size_info is None:
+        return {
+            "success": False,
+            "error": "Unable to estimate object size from disparity. Check stereo alignment.",
         }
-        
-        # Draw annotations
+
+    # Draw ROI on left image for visualization
         annotated = left_img.copy()
-        cv2.rectangle(annotated, 
-                     (center_x - roi_size, center_y - roi_size),
-                     (center_x + roi_size, center_y + roi_size),
-                     (0, 255, 0), 3)
-        cv2.putText(annotated, f'Z: {Z:.3f}m', 
-                   (center_x - roi_size, center_y - roi_size - 10),
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-        cv2.putText(annotated, f'W: {dimensions["width_mm"]:.1f}mm', 
-                   (center_x - roi_size, center_y - roi_size + 25),
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-        cv2.putText(annotated, f'H: {dimensions["height_mm"]:.1f}mm', 
-                   (center_x - roi_size, center_y - roi_size + 50),
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-    
-    elif object_type == 'circular':
-        # Estimate diameter
-        pixel_diameter = roi_size * 2
-        
-        real_diameter = (pixel_diameter * Z) / fx
-        
-        dimensions = {
-            'diameter_mm': real_diameter * 1000,
-            'diameter_inches': real_diameter * 39.3701,
-            'radius_mm': (real_diameter / 2) * 1000
-        }
-        
-        # Draw annotations
-        annotated = left_img.copy()
-        cv2.circle(annotated, (center_x, center_y), roi_size, (0, 255, 0), 3)
-        cv2.putText(annotated, f'Z: {Z:.3f}m', 
-                   (center_x - roi_size, center_y - roi_size - 10),
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-        cv2.putText(annotated, f'D: {dimensions["diameter_mm"]:.1f}mm', 
-                   (center_x - roi_size, center_y - roi_size + 25),
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-    
-    else:  # polygon
-        # Estimate all edge dimensions
-        # For polygon, we'd need to detect edges/contours
-        # Simplified version: estimate bounding box dimensions
-        pixel_width = roi_size * 2
-        pixel_height = roi_size * 2
-        
-        real_width = (pixel_width * Z) / fx
-        real_height = (pixel_height * Z) / fy
-        
-        dimensions = {
-            'bounding_width_mm': real_width * 1000,
-            'bounding_height_mm': real_height * 1000,
-            'note': 'Polygon edge detection would provide individual edge lengths'
-        }
-        
-        annotated = left_img.copy()
-        cv2.rectangle(annotated, 
-                     (center_x - roi_size, center_y - roi_size),
-                     (center_x + roi_size, center_y + roi_size),
-                     (0, 255, 0), 3)
-        cv2.putText(annotated, f'Z: {Z:.3f}m', 
-                   (center_x - roi_size, center_y - roi_size - 10),
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+    cv2.rectangle(annotated, (x, y), (x + w_roi, y + h_roi), (0, 255, 0), 2)
+    cv2.putText(
+        annotated,
+        f"Z: {size_info['depth']:.3f}m",
+        (x, max(20, y - 10)),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.7,
+        (0, 255, 0),
+        2,
+    )
+
+    disparity_color = cv2.applyColorMap(disparity_vis, cv2.COLORMAP_JET)
     
     return {
-        'success': True,
-        'left_image': encode_image_to_base64(left_img),
-        'right_image': encode_image_to_base64(right_img),
-        'disparity_map': encode_image_to_base64(disparity_colored),
-        'annotated_image': encode_image_to_base64(annotated),
-        'distance_z_m': float(Z),
-        'average_disparity': float(avg_disparity),
-        'object_type': object_type,
-        'dimensions': dimensions,
-        'formula': 'Z = (fx * baseline) / disparity, then X = (x - cx) * Z / fx, Y = (y - cy) * Z / fy'
+        "success": True,
+        "left_image": encode_image_to_base64(left_img),
+        "right_image": encode_image_to_base64(right_img),
+        "disparity_map": encode_image_to_base64(disparity_color),
+        "annotated_image": encode_image_to_base64(annotated),
+        "distance_z_m": float(size_info["depth"]),
+        "object_type": object_type,
+        "dimensions": {
+            "width_m": float(size_info["width"]),
+            "height_m": float(size_info["height"]),
+        },
+        "formula": "Depth = (focal_length * baseline) / disparity (via new StereoCalibration class)",
     }
+
 
 def estimate_pose_hand_tracking_handler(image_data, use_mediapipe=True):
     """
-    Problem 3: Real-time Pose Estimation and Hand Tracking
-    
-    Uses MediaPipe or OpenPose for pose and hand tracking.
-    Outputs visual results and CSV data.
-    
-    Args:
-        image_data: Base64 encoded image
-        use_mediapipe: If True, use MediaPipe; else use OpenPose (if available)
-        
-    Returns:
-        Dictionary with pose/hand landmarks and visualization
+    Problem 3: Real-time Pose Estimation and Hand Tracking using the new classes.
     """
     image = decode_base64_image(image_data)
     if image is None:
-        return {'success': False, 'error': 'Invalid image'}
-    
-    # Create a copy for annotation
-    annotated = image.copy()
-    
-    pose_landmarks = []
-    hand_landmarks = []
-    
-    if use_mediapipe:
-        try:
-            import mediapipe as mp
-            
-            mp_pose = mp.solutions.pose
-            mp_hands = mp.solutions.hands
-            mp_drawing = mp.solutions.drawing_utils
-            
-            # Initialize MediaPipe
-            with mp_pose.Pose(
-                static_image_mode=True,
-                model_complexity=2,
-                enable_segmentation=False,
-                min_detection_confidence=0.5) as pose:
-                
-                with mp_hands.Hands(
-                    static_image_mode=True,
-                    max_num_hands=2,
-                    min_detection_confidence=0.5) as hands:
-                    
-                    # Convert BGR to RGB
-                    rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-                    
-                    # Process pose
-                    pose_results = pose.process(rgb_image)
-                    
-                    # Process hands
-                    hand_results = hands.process(rgb_image)
-                    
-                    # Draw pose landmarks
-                    if pose_results.pose_landmarks:
-                        mp_drawing.draw_landmarks(
-                            annotated,
-                            pose_results.pose_landmarks,
-                            mp_pose.POSE_CONNECTIONS,
-                            landmark_drawing_spec=mp_drawing.DrawingSpec(
-                                color=(0, 255, 0), thickness=2, circle_radius=2),
-                            connection_drawing_spec=mp_drawing.DrawingSpec(
-                                color=(0, 255, 0), thickness=2))
-                        
-                        # Extract pose landmarks
-                        for idx, landmark in enumerate(pose_results.pose_landmarks.landmark):
-                            pose_landmarks.append({
-                                'id': idx,
-                                'name': mp_pose.PoseLandmark(idx).name,
-                                'x': landmark.x,
-                                'y': landmark.y,
-                                'z': landmark.z,
-                                'visibility': landmark.visibility
-                            })
-                    
-                    # Draw hand landmarks
-                    if hand_results.multi_hand_landmarks:
-                        for hand_idx, hand_landmark in enumerate(hand_results.multi_hand_landmarks):
-                            mp_drawing.draw_landmarks(
-                                annotated,
-                                hand_landmark,
-                                mp_hands.HAND_CONNECTIONS,
-                                landmark_drawing_spec=mp_drawing.DrawingSpec(
-                                    color=(255, 0, 0), thickness=2, circle_radius=2),
-                                connection_drawing_spec=mp_drawing.DrawingSpec(
-                                    color=(255, 0, 0), thickness=2))
-                            
-                            # Extract hand landmarks
-                            hand_data = []
-                            for idx, landmark in enumerate(hand_landmark.landmark):
-                                hand_data.append({
-                                    'id': idx,
-                                    'x': landmark.x,
-                                    'y': landmark.y,
-                                    'z': landmark.z
-                                })
-                            
-                            # Determine handedness
-                            handedness = 'Unknown'
-                            if hand_results.multi_handedness:
-                                handedness = hand_results.multi_handedness[hand_idx].classification[0].label
-                            
-                            hand_landmarks.append({
-                                'hand_id': hand_idx,
-                                'handedness': handedness,
-                                'landmarks': hand_data
-                            })
-            
-            # Generate CSV data
-            csv_data = generate_pose_csv(pose_landmarks, hand_landmarks)
-            
-            return {
-                'success': True,
-                'original_image': encode_image_to_base64(image),
-                'annotated_image': encode_image_to_base64(annotated),
-                'pose_landmarks': pose_landmarks,
-                'hand_landmarks': hand_landmarks,
-                'num_pose_landmarks': len(pose_landmarks),
-                'num_hands': len(hand_landmarks),
-                'csv_data': csv_data,
-                'method': 'MediaPipe'
-            }
-            
-        except ImportError:
-            return {
-                'success': False,
-                'error': 'MediaPipe not installed. Install with: pip install mediapipe'
-            }
-        except Exception as e:
-            return {
-                'success': False,
-                'error': f'MediaPipe processing failed: {str(e)}'
-            }
-    else:
-        # OpenPose implementation would go here
-        # For now, return error as OpenPose requires more setup
+        return {"success": False, "error": "Invalid image"}
+
+    try:
+        # Pose first
+        annotated_pose, pose_landmarks, pose_data = _pose.process_frame(image)
+        # Then hands on top of pose drawing
+        annotated_full, hand_landmarks_list, hand_data = _hands.process_frame(annotated_pose)
+
+        pose_count = len(pose_landmarks.landmark) if pose_landmarks else 0
+        hand_count = len(hand_landmarks_list) if hand_landmarks_list else 0
+
+        # For simplicity we don't return the full CSV text; the caller can still
+        # trigger save via save_pose_csv_to_file using accumulated data.
         return {
-            'success': False,
-            'error': 'OpenPose requires additional setup. Please use MediaPipe option.'
+            "success": True,
+            "original_image": encode_image_to_base64(image),
+            "annotated_image": encode_image_to_base64(annotated_full),
+            "num_pose_landmarks": int(pose_count),
+            "num_hands": int(hand_count),
+            "method": "MediaPipe (new classes)",
         }
+    except Exception as e:
+        return {"success": False, "error": f"MediaPipe processing failed: {e}"}
 
-def generate_pose_csv(pose_landmarks, hand_landmarks):
-    """
-    Generate CSV data string from pose and hand landmarks
-    """
-    import io
-    
-    output = io.StringIO()
-    writer = csv.writer(output)
-    
-    # Write header
-    writer.writerow(['Type', 'ID', 'Name', 'X', 'Y', 'Z', 'Visibility/Handedness'])
-    
-    # Write pose landmarks
-    for landmark in pose_landmarks:
-        writer.writerow([
-            'POSE',
-            landmark['id'],
-            landmark['name'],
-            f"{landmark['x']:.6f}",
-            f"{landmark['y']:.6f}",
-            f"{landmark['z']:.6f}",
-            f"{landmark['visibility']:.6f}"
-        ])
-    
-    # Write hand landmarks
-    for hand in hand_landmarks:
-        for landmark in hand['landmarks']:
-            writer.writerow([
-                f"HAND_{hand['handedness']}",
-                landmark['id'],
-                f"Hand_{landmark['id']}",
-                f"{landmark['x']:.6f}",
-                f"{landmark['y']:.6f}",
-                f"{landmark['z']:.6f}",
-                hand['handedness']
-            ])
-    
-    return output.getvalue()
 
-def save_pose_csv_to_file(csv_data, filename=None):
+def save_pose_csv_to_file(csv_data=None, filename=None):
     """
-    Save CSV data to file
+    Save collected pose/hand data to CSV.
+
+    For backwards compatibility with existing routes that pass a CSV
+    string, we still accept `csv_data` but if it is None we instead
+    dump the accumulated data from the PoseEstimation / HandTracking
+    objects.
     """
     if filename is None:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -378,8 +422,25 @@ def save_pose_csv_to_file(csv_data, filename=None):
     
     os.makedirs(os.path.dirname(filename), exist_ok=True)
     
-    with open(filename, 'w', newline='') as f:
-        f.write(csv_data)
+    if csv_data is not None:
+        # Old behavior: write CSV string directly.
+        with open(filename, "w", newline="") as f:
+            f.write(csv_data)
+        return filename
+
+    # New behavior: combine pose + hand CSV from internal buffers.
+    combined = []
+    combined.extend(_pose.csv_data)
+    combined.extend(_hands.csv_data)
+    if not combined:
+        return filename
+
+    keys = sorted({k for row in combined for k in row.keys()})
+    with open(filename, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=keys)
+        writer.writeheader()
+        writer.writerows(combined)
     
     return filename
+
 

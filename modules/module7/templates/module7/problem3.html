@@ -72,6 +72,7 @@
       <p>Person with visible pose/hands</p>
       <input type="file" id="poseInput" accept="image/*" style="display:none" onchange="handlePoseUpload(event)">
     </div>
+    <p id="fileName7_3" style="text-align: center; margin-top: 10px; color: #666; font-size: 0.9em; display: none;"></p>
   </div>
 
   <div style="text-align:center; margin: 20px 0;">
@@ -154,6 +155,9 @@ function handlePoseUpload(e) {
     poseImage = ev.target.result;
     document.getElementById('trackBtn').disabled = false;
     document.getElementById('resultsSection').style.display = 'none';
+    // Show filename
+    document.getElementById('fileName7_3').textContent = `Uploaded: ${f.name}`;
+    document.getElementById('fileName7_3').style.display = 'block';
   };
   r.readAsDataURL(f);
 }
@@ -271,6 +275,7 @@ function resetAll() {
     document.getElementById('poseInput').value = '';
     document.getElementById('resultsSection').style.display = 'none';
     document.getElementById('trackBtn').disabled = true;
+    document.getElementById('fileName7_3').style.display = 'none';
   }
 }
 </script>
