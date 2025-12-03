@@ -683,16 +683,15 @@ class ObjectTracker {
                 };
             }
             
-            // Scale mask to match current frame size
-            let scaledMask = new cv.Mat();
-            cv.resize(mask, scaledMask, new cv.Size(src.cols, src.rows), 0, 0, cv.INTER_LINEAR);
-            
-            // Translate mask to tracked position
+            // Create mask at tracked position
+            // The mask is at the size of the original region, so we place it at the tracked location
             const maskTranslated = new cv.Mat.zeros(src.rows, src.cols, cv.CV_8UC1);
-            const offsetX = trackedRect.x - originalRect.x;
-            const offsetY = trackedRect.y - originalRect.y;
             
-            // Copy mask to new position
+            // Scale mask to match tracked rect size
+            let scaledMask = new cv.Mat();
+            cv.resize(mask, scaledMask, new cv.Size(trackedRect.width, trackedRect.height), 0, 0, cv.INTER_LINEAR);
+            
+            // Copy mask to tracked position
             const roi = new cv.Rect(
                 Math.max(0, trackedRect.x),
                 Math.max(0, trackedRect.y),
@@ -702,8 +701,8 @@ class ObjectTracker {
             
             if (roi.width > 0 && roi.height > 0) {
                 const maskRoi = scaledMask.roi(new cv.Rect(
-                    Math.max(0, -offsetX),
-                    Math.max(0, -offsetY),
+                    Math.max(0, -trackedRect.x),
+                    Math.max(0, -trackedRect.y),
                     roi.width,
                     roi.height
                 ));
@@ -712,6 +711,8 @@ class ObjectTracker {
                 maskRoi.delete();
                 maskTranslatedRoi.delete();
             }
+            
+            scaledMask.delete();
             
             // Draw bounding box
             const pt1 = new cv.Point(trackedRect.x, trackedRect.y);

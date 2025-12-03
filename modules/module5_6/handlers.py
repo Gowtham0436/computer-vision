@@ -181,3 +181,72 @@ def create_sam2_npz_from_frame(image_data):
         'message': 'NPZ file created successfully. Download and use it for tracking.'
     }
 
+def create_sam2_npz_from_region(image_data, x, y, width, height):
+    """
+    Create SAM2 NPZ file from a selected region in the image.
+    Crops the image to the selected region, then creates a mask covering the entire region.
+    
+    Args:
+        image_data: Base64 encoded image (captured frame)
+        x, y, width, height: Region coordinates
+        
+    Returns:
+        Dictionary with NPZ file data (base64 encoded) and mask preview
+    """
+    # Decode image first to validate
+    image = decode_base64_image(image_data)
+    if image is None:
+        return {'success': False, 'error': 'Invalid image - could not decode base64 data'}
+    
+    h, w = image.shape[:2]
+    
+    # Validate and clamp region coordinates
+    x = max(0, int(x))
+    y = max(0, int(y))
+    width = min(int(width), w - x)
+    height = min(int(height), h - y)
+    
+    if width <= 0 or height <= 0:
+        return {'success': False, 'error': 'Invalid region dimensions'}
+    
+    # Crop image to selected region
+    cropped_image = image[y:y+height, x:x+width]
+    
+    # Create a mask that covers the entire cropped region
+    # This is simpler than boundary detection - just use the full region
+    mask = np.ones((height, width), dtype=np.uint8) * 255
+    
+    # Compute centroid (center of the region)
+    cx = width / 2.0
+    cy = height / 2.0
+    centroid = np.array([[cx, cy]], dtype=np.float32)
+    
+    # Reshape mask to (1, H, W) format
+    mask_reshaped = mask.reshape(1, height, width)
+    
+    # Create NPZ file in memory
+    npz_buffer = io.BytesIO()
+    np.savez(npz_buffer, masks=mask_reshaped, centroids=centroid)
+    npz_buffer.seek(0)
+    
+    # Encode NPZ to base64
+    npz_base64 = base64.b64encode(npz_buffer.read()).decode('utf-8')
+    
+    # Create mask preview (overlay on cropped image)
+    mask_preview = cropped_image.copy()
+    overlay = cropped_image.copy()
+    overlay[mask > 0] = [255, 0, 255]  # Magenta overlay
+    mask_preview = cv2.addWeighted(cropped_image, 0.7, overlay, 0.3, 0)
+    mask_preview_encoded = encode_image_to_base64(mask_preview)
+    
+    return {
+        'success': True,
+        'npz_file': npz_base64,
+        'mask_preview': mask_preview_encoded,
+        'cropped_image': encode_image_to_base64(cropped_image),
+        'mask_shape': [1, height, width],
+        'centroid': [float(cx), float(cy)],
+        'region': {'x': x, 'y': y, 'width': width, 'height': height},
+        'message': 'NPZ file created from selected region. Ready for tracking.'
+    }
+

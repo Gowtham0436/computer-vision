@@ -171,12 +171,20 @@ function onMouseUp(e) {
     };
     
     if (selectionRect.width > 10 && selectionRect.height > 10) {
-        // Capture template from video frame
-        captureTemplate(selectionRect);
+        const mode = document.getElementById('trackingMode').value;
+        
+        if (mode === 'sam2') {
+            // For SAM2 mode, create NPZ from selected region
+            createNPZFromRegion(selectionRect);
+        } else {
+            // For markerless mode, capture template
+            captureTemplate(selectionRect);
+            updateStatus('Region selected. Tracking started.');
+        }
+        
         isSelectingRegion = false;
         document.getElementById('selectRegionBtn').textContent = 'Select Region';
         document.getElementById('selectRegionBtn').style.background = '#2196F3';
-        updateStatus('Region selected. Tracking started.');
     } else {
         // Selection too small, reset
         selectionRect = null;
@@ -235,6 +243,81 @@ async function loadSAM2File() {
     reader.readAsArrayBuffer(file);
 }
 
+async function createNPZFromRegion(rect) {
+    if (!video || !video.videoWidth) {
+        alert('Please start the camera first');
+        return;
+    }
+    
+    try {
+        updateStatus('Creating NPZ from selected region...');
+        
+        // Capture current frame from canvas
+        const imageData = canvas.toDataURL('image/jpeg', 0.9);
+        const base64Data = imageData.split(',')[1];
+        
+        // Send to backend to create NPZ from region
+        const response = await fetch('/module5_6/api/create_sam2_npz_region', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                image: base64Data,
+                x: rect.x,
+                y: rect.y,
+                width: rect.width,
+                height: rect.height
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            // Convert base64 NPZ to blob
+            const npzData = Uint8Array.from(atob(result.npz_file), c => c.charCodeAt(0));
+            
+            // Capture the current frame as template for tracking
+            const frameImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const templateMat = cv.matFromImageData(frameImageData);
+            
+            // Load the NPZ directly into tracker
+            await tracker.loadSAM2Data(npzData.buffer);
+            
+            // Store the template image for template matching (from the selected region)
+            const x = Math.max(0, Math.round(rect.x));
+            const y = Math.max(0, Math.round(rect.y));
+            const w = Math.min(Math.round(rect.width), templateMat.cols - x);
+            const h = Math.min(Math.round(rect.height), templateMat.rows - y);
+            
+            if (w > 0 && h > 0) {
+                tracker.sam2TemplateRect = new cv.Rect(x, y, w, h);
+                tracker.sam2Template = templateMat.roi(new cv.Rect(x, y, w, h));
+                console.log('Template stored for SAM2 tracking from region:', w, 'x', h);
+            }
+            
+            templateMat.delete();
+            
+            const maskCount = tracker.sam2Masks ? tracker.sam2Masks.length : 0;
+            updateStatus(`✓ NPZ created from selected region: ${maskCount} mask(s) ready for tracking`);
+            
+            // Optionally download the file
+            const blob = new Blob([npzData], { type: 'application/zip' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'sam2_selected_region.npz';
+            a.click();
+            URL.revokeObjectURL(url);
+        } else {
+            alert('Error: ' + (result.error || 'Failed to create NPZ from region'));
+            updateStatus('Error: ' + (result.error || 'Failed to create NPZ from region'));
+        }
+    } catch (err) {
+        console.error('Error creating NPZ from region:', err);
+        updateStatus('Error: ' + err.message);
+        alert('Error creating NPZ: ' + err.message);
+    }
+}
+
 async function captureFrameAndCreateNPZ() {
     if (!video || !video.videoWidth) {
         alert('Please start the camera first');
@@ -262,8 +345,8 @@ async function captureFrameAndCreateNPZ() {
             const npzData = Uint8Array.from(atob(result.npz_file), c => c.charCodeAt(0));
             
             // Capture the current frame as template for tracking
-            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            const templateMat = cv.matFromImageData(imageData);
+            const frameImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const templateMat = cv.matFromImageData(frameImageData);
             
             // Load the NPZ directly into tracker
             await tracker.loadSAM2Data(npzData.buffer);
