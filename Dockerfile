@@ -1,12 +1,13 @@
-# Use Python 3.11 slim image as base
-FROM python:3.11-slim
+# Use Python 3.11 slim image with Debian Bookworm (stable) for better package availability
+FROM python:3.11-slim-bookworm
 
 # Set working directory
 WORKDIR /app
 
 # Install system dependencies required for OpenCV and MediaPipe
+# Using packages that work with both Bookworm and newer Debian versions
 RUN apt-get update && apt-get install -y \
-    libgl1 \
+    libgl1-mesa-glx \
     libglib2.0-0 \
     libsm6 \
     libxext6 \
