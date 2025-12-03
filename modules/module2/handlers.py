@@ -299,13 +299,13 @@ def match_template_handler(template_data, target_data, threshold=0.35):
                 # Accept it but mark as low confidence
                 pass  # Continue to create result
             else:
-            return {
-                'success': False,
+                return {
+                    'success': False,
                     'error': f'Match confidence too low: {best_score:.3f} (minimum: {min_acceptable:.2f}). Try adjusting the template or using a different image.',
-                'correlation_score': float(best_score),
+                    'correlation_score': float(best_score),
                     'threshold_used': float(min_acceptable),
                     'suggestion': 'The template might not match well. Try: 1) Crop template more tightly, 2) Use template from same image, 3) Ensure similar lighting/quality.'
-            }
+                }
         
         # Create annotated image
         annotated = target_bgr.copy()
@@ -775,45 +775,45 @@ def detect_and_blur_handler(image_data):
             
             th, tw = template.shape[:2]
         
-        # Skip if template is larger than scene
-        if th > scene_gray.shape[0] or tw > scene_gray.shape[1]:
-            continue
+            # Skip if template is larger than scene
+            if th > scene_gray.shape[0] or tw > scene_gray.shape[1]:
+                continue
         
-        # Template matching using correlation
-        result = cv2.matchTemplate(scene_gray, template, cv2.TM_CCOEFF_NORMED)
-        _, max_val, _, max_loc = cv2.minMaxLoc(result)
+            # Template matching using correlation
+            result = cv2.matchTemplate(scene_gray, template, cv2.TM_CCOEFF_NORMED)
+            _, max_val, _, max_loc = cv2.minMaxLoc(result)
         
-        # Check if correlation exceeds threshold
-        if max_val >= correlation_threshold:
-            detected_count += 1
-            x, y = max_loc
+            # Check if correlation exceeds threshold
+            if max_val >= correlation_threshold:
+                detected_count += 1
+                x, y = max_loc
                 w, h = tw, th
             
-            # Store detection info
-            detected_objects.append({
-                'template': template_file,
-                'x': int(x),
-                'y': int(y),
-                'w': int(tw),
-                'h': int(th),
-                'correlation': round(float(max_val), 3)
-            })
+                # Store detection info
+                detected_objects.append({
+                    'template': template_file,
+                    'x': int(x),
+                    'y': int(y),
+                    'w': int(tw),
+                    'h': int(th),
+                    'correlation': round(float(max_val), 3)
+                })
             
-            # Blur the detected region
-            roi = blurred_scene[y:y+th, x:x+tw]
-            if roi.size > 0:
-                # Use Gaussian blur with kernel size proportional to template size
-                blur_size = max(15, min(31, int(min(tw, th) * 0.3)))
-                if blur_size % 2 == 0:
-                    blur_size += 1  # Must be odd
-                roi_blurred = cv2.GaussianBlur(roi, (blur_size, blur_size), 0)
-                blurred_scene[y:y+th, x:x+tw] = roi_blurred
+                # Blur the detected region
+                roi = blurred_scene[y:y+th, x:x+tw]
+                if roi.size > 0:
+                    # Use Gaussian blur with kernel size proportional to template size
+                    blur_size = max(15, min(31, int(min(tw, th) * 0.3)))
+                    if blur_size % 2 == 0:
+                        blur_size += 1  # Must be odd
+                    roi_blurred = cv2.GaussianBlur(roi, (blur_size, blur_size), 0)
+                    blurred_scene[y:y+th, x:x+tw] = roi_blurred
                 
-                # Draw bounding box for visualization
-                cv2.rectangle(blurred_scene, (x, y), (x+tw, y+th), (0, 255, 0), 2)
-                cv2.putText(blurred_scene, f'{template_file[:15]}', 
-                         (x, max(15, y - 5)),
-                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+                    # Draw bounding box for visualization
+                    cv2.rectangle(blurred_scene, (x, y), (x+tw, y+th), (0, 255, 0), 2)
+                    cv2.putText(blurred_scene, f'{template_file[:15]}', 
+                             (x, max(15, y - 5)),
+                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
     
     return {
         'success': True,

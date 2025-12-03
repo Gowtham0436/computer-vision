@@ -416,7 +416,7 @@ class SIFTFromScratch:
                             [
                                 prev_img[y - 1 : y + 2, x - 1 : x + 2].ravel(),
                                 curr_img[y - 1 : y + 2, x - 1 : x + 2].ravel(),
-                                next_img[y - 1 : y + 2, x - 1 : x + 2,].ravel(),
+                                next_img[y - 1 : y + 2, x - 1 : x + 2].ravel(),
                             ]
                         )
                         if value > 0 and value != patch.max():
@@ -424,7 +424,7 @@ class SIFTFromScratch:
                         if value < 0 and value != patch.min():
                             continue
                         if self._is_edge_response(curr_img, x, y):
-            continue
+                            continue
                         sigma = self.sigma * (2 ** octave_idx) * (2 ** (layer_idx / self.num_scales))
                         kp = Keypoint(
                             x=x * (2**octave_idx),
@@ -488,7 +488,7 @@ class SIFTFromScratch:
 
             max_val = hist.max()
             if max_val == 0:
-            continue
+                continue
             for bin_idx, value in enumerate(hist):
                 if value >= 0.8 * max_val:
                     angle = (bin_idx * 10) % 360
@@ -738,17 +738,23 @@ def extract_sift_features_handler(image1_data, image2_data=None, compare_with_op
     if compare_with_opencv:
         try:
             reference = cv2.SIFT_create()
-            ref_kp_a, ref_desc_a = reference.detectAndCompute((gray1_float * 255).astype(np.uint8), None)
+            ref_kp_a, ref_desc_a = reference.detectAndCompute(
+                (gray1_float * 255).astype(np.uint8), None
+            )
             
             img_with_opencv_kp = img1.copy()
-            cv2.drawKeypoints(img1, ref_kp_a, img_with_opencv_kp,
-                           flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+            cv2.drawKeypoints(
+                img1,
+                ref_kp_a,
+                img_with_opencv_kp,
+                flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS,
+            )
             
-    comparison = np.hstack([img_with_custom_kp, img_with_opencv_kp])
-    
+            comparison = np.hstack([img_with_custom_kp, img_with_opencv_kp])
+            
             result.update({
-        'opencv_keypoints': encode_image_to_base64(img_with_opencv_kp),
-        'comparison': encode_image_to_base64(comparison),
+                'opencv_keypoints': encode_image_to_base64(img_with_opencv_kp),
+                'comparison': encode_image_to_base64(comparison),
                 'opencv_kp_count': len(ref_kp_a),
                 'opencv_success': True,
             })
@@ -760,7 +766,7 @@ def extract_sift_features_handler(image1_data, image2_data=None, compare_with_op
     
     # If two images provided, do matching
     if image2_data:
-    img2 = decode_base64_image(image2_data)
+        img2 = decode_base64_image(image2_data)
         if img2 is None:
             return {'success': False, 'error': 'Invalid second image'}
         
@@ -769,7 +775,7 @@ def extract_sift_features_handler(image1_data, image2_data=None, compare_with_op
             new_size = (resize_width, int(img2.shape[0] * scale))
             img2 = cv2.resize(img2, new_size, interpolation=cv2.INTER_AREA)
         
-    gray2 = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY) if len(img2.shape) == 3 else img2
+        gray2 = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY) if len(img2.shape) == 3 else img2
         gray2_float = gray2.astype(np.float32) / 255.0
         
         # Custom SIFT on second image
@@ -804,8 +810,12 @@ def extract_sift_features_handler(image1_data, image2_data=None, compare_with_op
         if compare_with_opencv and 'opencv_success' in result and result['opencv_success']:
             try:
                 reference = cv2.SIFT_create()
-                ref_kp_a, ref_desc_a = reference.detectAndCompute((gray1_float * 255).astype(np.uint8), None)
-                ref_kp_b, ref_desc_b = reference.detectAndCompute((gray2_float * 255).astype(np.uint8), None)
+                ref_kp_a, ref_desc_a = reference.detectAndCompute(
+                    (gray1_float * 255).astype(np.uint8), None
+                )
+                ref_kp_b, ref_desc_b = reference.detectAndCompute(
+                    (gray2_float * 255).astype(np.uint8), None
+                )
                 bf = cv2.BFMatcher(cv2.NORM_L2, crossCheck=False)
                 ref_matches_knn = bf.knnMatch(ref_desc_a, ref_desc_b, k=2)
                 ref_matches = []
