@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Edges & Corners — Simple Detectors (Sobel + NMS/Hysteresis, Harris)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root{--bg:#f6f8fb;--ink:#1f2a3d;--muted:#66728a;--line:#dde5f2;--accent:#2a71ff;--ok:#22c55e;--warn:#f59e0b}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Arial}
+  header{background:#fff;border-bottom:1px solid var(--line);padding:14px 18px;display:flex;justify-content:space-between;align-items:center;gap:12px}
+  h1{margin:0;font-size:18px;font-weight:800}
+  .pill{border:1px solid var(--line);background:#fff;border-radius:999px;padding:6px 10px;font-size:12px;color:#3a4b64}
+  .wrap{padding:12px 16px;display:grid;grid-template-columns:360px 1fr;gap:16px}
+  .card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:12px;box-shadow:0 1px 0 rgba(16,24,40,.04)}
+  .title{margin:0 0 10px 0;font-size:12px;font-weight:800;color:#58657f;letter-spacing:.5px;text-transform:uppercase}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .stack{display:flex;flex-direction:column;gap:10px}
+  .drop{border:2px dashed var(--line);background:#f1f5ff;border-radius:12px;padding:12px;text-align:center;cursor:pointer;color:#4760a9}
+  .controls .row input, .controls .row select { padding:8px 10px;border-radius:10px;border:1px solid var(--line);background:#fff;color:#1f2a3d }
+  .slider{width:170px;accent-color:var(--accent)}
+  .btn{background:var(--accent);color:#fff;border:none;border-radius:12px;padding:10px 14px;font-weight:700;cursor:pointer}
+  .btn.secondary{background:#fff;color:#1f2a3d;border:1px solid var(--line)}
+  .btn:disabled{opacity:.55;cursor:not-allowed}
+  .panes{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+  canvas{width:100%;max-height:70vh;border:1px solid var(--line);border-radius:12px;background:#ffffff}
+  .muted{color:var(--muted);font-size:12px}
+  .log{height:120px;overflow:auto;background:#fff;border:1px solid var(--line);border-radius:10px;padding:8px;font:12px ui-monospace,Menlo,Consolas,monospace}
+  .footer{margin-top:8px;display:flex;justify-content:space-between;align-items:center}
+</style>
+</head>
+<body>
+<header>
+  <h1>Edges & Corners — Simple Detectors</h1>
+  <span class="pill">Runs locally in your browser • OpenCV.js</span>
+</header>
+
+<div class="wrap">
+  <!-- Controls -->
+  <div class="card controls">
+    <div class="stack">
+      <div>
+        <div class="title">Image</div>
+        <label class="drop" id="dropZone">Drop image or <strong>click</strong><input id="fileInput" type="file" accept="image/*" hidden></label>
+        <div class="row">
+          <label class="muted">Resize to width (px)</label>
+          <input id="resizeW" type="number" value="1200" min="320" step="40" />
+        </div>
+      </div>
+
+      <div>
+        <div class="title">Edge detector (Sobel + NMS + hysteresis)</div>
+        <div class="row">
+          <label>Pre-blur σ</label><input id="edgeSigma" type="number" step="0.5" value="1.0">
+          <label>Hyst. low</label><input id="edgeLow" type="number" step="0.01" value="0.10">
+          <label>Hyst. high</label><input id="edgeHigh" type="number" step="0.01" value="0.20">
+          <label>Sobel ksize</label>
+          <select id="sobelK"><option>3</option><option>5</option></select>
+        </div>
+      </div>
+
+      <div>
+        <div class="title">Corner detector (Harris)</div>
+        <div class="row">
+          <label>k</label><input id="harrisK" type="number" step="0.01" value="0.04">
+          <label>σ (window)</label><input id="harrisSigma" type="number" step="0.5" value="1.5">
+          <label>Rel thresh</label><input id="cornerTh" type="number" step="0.005" value="0.01">
+          <label>NMS size</label><input id="nmsSize" type="number" step="2" value="3">
+          <label>Top N</label><input id="topN" type="number" value="500">
+        </div>
+      </div>
+
+      <div class="row" style="justify-content:space-between">
+        <div class="row" style="gap:8px">
+          <button id="runBtn" class="btn" disabled>Run</button>
+          <button id="resetBtn" class="btn secondary">Reset</button>
+        </div>
+        <div class="row" style="gap:8px">
+          <button id="dlOverlay" class="btn secondary" disabled>Download overlay</button>
+        </div>
+      </div>
+
+      <div>
+        <div class="title">Log</div>
+        <div class="log" id="log"></div>
+      </div>
+
+      <div class="footer">
+        <span class="muted">Tip: if edges are too sparse, lower high/low; if noisy, increase σ or raise low/high.</span>
+        <span id="perf" class="muted">Ready</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Views -->
+  <div class="card">
+    <div class="panes">
+      <div>
+        <div class="title">Original (grayscale)</div>
+        <canvas id="cvGray"></canvas>
+      </div>
+      <div>
+        <div class="title">Edges (binary)</div>
+        <canvas id="cvEdges"></canvas>
+      </div>
+      <div>
+        <div class="title">Overlay (edges + corners)</div>
+        <canvas id="cvOverlay"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- OpenCV.js -->
+<script src="https://docs.opencv.org/4.x/opencv.js"
+  onload="window.__opencv_loaded=true; if(window.appInit){appInit();}"
+  onerror="document.getElementById('log').textContent+='[ERR] Failed to load OpenCV.js\n'"></script>
+
+<script>
+function appInit(){
+  const logEl = document.getElementById('log');
+  const perfEl = document.getElementById('perf');
+  function log(s){ logEl.textContent += s + "\\n"; logEl.scrollTop = logEl.scrollHeight; }
+  function autoK(sigma){ const k=Math.round(6*sigma + 1); return (k%2===0)?k+1:k; }
+
+  if (typeof cv === 'undefined'){ log('[ERR] cv undefined'); return; }
+
+  cv.onRuntimeInitialized = ()=>{
+    log('[OK] OpenCV.js ready');
+
+    // DOM
+    const fileInput = document.getElementById('fileInput');
+    const dropZone  = document.getElementById('dropZone');
+    const cvGray    = document.getElementById('cvGray');
+    const cvEdges   = document.getElementById('cvEdges');
+    const cvOverlay = document.getElementById('cvOverlay');
+
+    // State
+    let srcRGBA=null, gray=null;  // cv.Mat
+    let colorBGR=null;
+
+    // Wire DnD
+    function wireDrop(zone, input){
+      zone.addEventListener('click', ()=> input.click());
+      zone.addEventListener('dragover', e=>{ e.preventDefault(); zone.style.borderColor="#b8cffc"; });
+      zone.addEventListener('dragleave', ()=> zone.style.borderColor="");
+      zone.addEventListener('drop', e=>{
+        e.preventDefault(); zone.style.borderColor="";
+        input.files = e.dataTransfer.files; input.dispatchEvent(new Event('change'));
+      });
+    }
+    wireDrop(dropZone, fileInput);
+
+    // Load image
+    fileInput.addEventListener('change', e=>{
+      const f=e.target.files?.[0]; if(!f) return;
+      const url = URL.createObjectURL(f);
+      const img = new Image();
+      img.onload = ()=>{
+        const tgtW = Math.max(320, parseInt(document.getElementById('resizeW').value)||1200);
+        const scale = Math.min(1, tgtW / img.naturalWidth);
+        const W = Math.round(img.naturalWidth * scale);
+        const H = Math.round(img.naturalHeight* scale);
+
+        const tmp = document.createElement('canvas');
+        tmp.width=W; tmp.height=H;
+        tmp.getContext('2d').drawImage(img, 0, 0, W, H);
+
+        if(srcRGBA) srcRGBA.delete();
+        if(gray) gray.delete();
+        if(colorBGR) colorBGR.delete();
+
+        srcRGBA = cv.imread(tmp);
+        gray = new cv.Mat(); cv.cvtColor(srcRGBA, gray, cv.COLOR_RGBA2GRAY);
+        colorBGR = new cv.Mat(); cv.cvtColor(srcRGBA, colorBGR, cv.COLOR_RGBA2BGR);
+
+        cv.imshow(cvGray, gray);
+        [cvEdges, cvOverlay].forEach(c=> c.getContext('2d').clearRect(0,0,c.width,c.height));
+        log(`[OK] Loaded ${f.name} → ${W}×${H}`);
+        document.getElementById('runBtn').disabled = false;
+        document.getElementById('dlOverlay').disabled = true;
+        URL.revokeObjectURL(url);
+      };
+      img.src = url;
+    });
+
+    // Reset
+    document.getElementById('resetBtn').onclick = ()=>{
+      [cvGray, cvEdges, cvOverlay].forEach(c=> c.getContext('2d').clearRect(0,0,c.width,c.height));
+      if(srcRGBA){ srcRGBA.delete(); srcRGBA=null; }
+      if(gray){ gray.delete(); gray=null; }
+      if(colorBGR){ colorBGR.delete(); colorBGR=null; }
+      document.getElementById('runBtn').disabled = true;
+      document.getElementById('dlOverlay').disabled = true;
+      log('[INFO] Reset.');
+    };
+
+    // Download
+    document.getElementById('dlOverlay').onclick = ()=>{
+      cvOverlay.toBlob(b=>{
+        const a=document.createElement('a'); a.href=URL.createObjectURL(b);
+        a.download='edges_corners_overlay.png'; a.click(); URL.revokeObjectURL(a.href);
+      }, 'image/png', 0.95);
+    };
+
+    // ---- Math helpers on Mats ----
+    function gaussianKernelSizeFromSigma(sigma){
+      let k = Math.round(6*sigma + 1); if(k%2===0) k+=1; return k;
+    }
+
+    // Edge pipeline
+    function simpleEdges(gray, sigma, lowR, highR, sobelK){
+      // Smooth
+      let sm = new cv.Mat();
+      if(sigma>0){
+        const k = gaussianKernelSizeFromSigma(sigma);
+        cv.GaussianBlur(gray, sm, new cv.Size(k,k), sigma, sigma, cv.BORDER_REPLICATE);
+      }else{
+        sm = gray.clone();
+      }
+
+      // Gradients
+      const Ix = new cv.Mat(), Iy = new cv.Mat();
+      cv.Sobel(sm, Ix, cv.CV_32F, 1, 0, sobelK, 1, 0, cv.BORDER_REPLICATE);
+      cv.Sobel(sm, Iy, cv.CV_32F, 0, 1, sobelK, 1, 0, cv.BORDER_REPLICATE);
+      sm.delete();
+
+      // Magnitude & orientation (degrees in [0,180))
+      const mag = new cv.Mat(), ang = new cv.Mat();
+      cv.cartToPolar(Ix, Iy, mag, ang, true);
+      // Map to [0,180)
+      const angData = ang.data32F;
+      for(let i=0;i<angData.length;i++){
+        let a = angData[i];
+        if(a<0) a+=180; if(a>=180) a-=180;
+        angData[i]=a;
+      }
+
+      // NMS (custom)
+      const thin = nmsAlongGradient(mag, ang);
+
+      // Hysteresis (custom)
+      const edges = hysteresis(thin, lowR, highR);
+
+      Ix.delete(); Iy.delete(); ang.delete(); mag.delete();
+      return edges; // CV_8U, 0/255
+    }
+
+    function nmsAlongGradient(mag, ang){
+      const H=mag.rows, W=mag.cols;
+      const out = new cv.Mat.zeros(H, W, cv.CV_32F);
+      const md = mag.data32F, ad = ang.data32F, od = out.data32F;
+
+      function qdir(a){
+        if (a<22.5 || a>=157.5) return 0;
+        if (a<67.5) return 45;
+        if (a<112.5) return 90;
+        return 135;
+      }
+      const idx=(y,x)=> y*W + x;
+
+      for(let y=1;y<H-1;y++){
+        for(let x=1;x<W-1;x++){
+          const i=idx(y,x), m=md[i], a=qdir(ad[i]);
+          let q=0, r=0;
+          if(a===0){ q=md[idx(y, x+1)]; r=md[idx(y, x-1)]; }
+          else if(a===45){ q=md[idx(y-1, x+1)]; r=md[idx(y+1, x-1)]; }
+          else if(a===90){ q=md[idx(y-1, x)];   r=md[idx(y+1, x)]; }
+          else { q=md[idx(y-1, x-1)]; r=md[idx(y+1, x+1)]; }
+          if(m>=q && m>=r) od[i]=m;
+        }
+      }
+      return out;
+    }
+
+    function hysteresis(nms32, lowR, highR){
+      // thresholds relative to global max
+      const H=nms32.rows, W=nms32.cols, N=H*W;
+      const inD = nms32.data32F;
+      let maxv=0; for(let i=0;i<N;i++) if(inD[i]>maxv) maxv=inD[i];
+      const hi = highR * maxv, lo = lowR * maxv;
+
+      const strong = new Uint8Array(N);
+      const weak   = new Uint8Array(N);
+      for(let i=0;i<N;i++){
+        const v=inD[i];
+        if(v>=hi) strong[i]=1;
+        else if(v>=lo) weak[i]=1;
+      }
+
+      const out = new cv.Mat.zeros(H, W, cv.CV_8U);
+      const od = out.data;
+
+      // BFS from strong; include connected weak (8-neigh)
+      const qy=new Int32Array(N), qx=new Int32Array(N); let qs=0, qe=0;
+      function push(y,x){ qy[qe]=y; qx[qe]=x; qe++; }
+
+      for(let y=0;y<H;y++){
+        for(let x=0;x<W;x++){
+          const i=y*W+x;
+          if(strong[i]){ od[i]=255; push(y,x); }
+        }
+      }
+      const nb=[-1,-1, -1,0, -1,1, 0,-1, 0,1, 1,-1, 1,0, 1,1];
+
+      while(qs<qe){
+        const y=qy[qs], x=qx[qs]; qs++;
+        for(let k=0;k<8;k++){
+          const ny=y+nb[2*k], nx=x+nb[2*k+1];
+          if(ny>=0 && ny<H && nx>=0 && nx<W){
+            const j=ny*W+nx;
+            if(weak[j] && od[j]===0){
+              od[j]=255; push(ny,nx);
+            }
+          }
+        }
+      }
+      return out;
+    }
+
+    // Harris corners
+    function harrisCorners(gray, k, sigma, thRel, nmsSize, topN){
+      const gray32=new cv.Mat(); gray.convertTo(gray32, cv.CV_32F);
+
+      const Ix=new cv.Mat(), Iy=new cv.Mat();
+      cv.Sobel(gray32, Ix, cv.CV_32F, 1, 0, 3, 1, 0, cv.BORDER_REPLICATE);
+      cv.Sobel(gray32, Iy, cv.CV_32F, 0, 1, 3, 1, 0, cv.BORDER_REPLICATE);
+
+      const Ixx=new cv.Mat(), Iyy=new cv.Mat(), Ixy=new cv.Mat();
+      cv.multiply(Ix, Ix, Ixx); cv.multiply(Iy, Iy, Iyy); cv.multiply(Ix, Iy, Ixy);
+
+      const winK = Math.max(3, autoK(sigma));
+      const Sxx=new cv.Mat(), Syy=new cv.Mat(), Sxy=new cv.Mat();
+      cv.GaussianBlur(Ixx, Sxx, new cv.Size(winK,winK), sigma, sigma, cv.BORDER_REPLICATE);
+      cv.GaussianBlur(Iyy, Syy, new cv.Size(winK,winK), sigma, sigma, cv.BORDER_REPLICATE);
+      cv.GaussianBlur(Ixy, Sxy, new cv.Size(winK,winK), sigma, sigma, cv.BORDER_REPLICATE);
+
+      // R = det(M) - k*(trace(M))^2
+      const det=new cv.Mat(), tr=new cv.Mat(), tr2=new cv.Mat(), ktr2=new cv.Mat(), R=new cv.Mat();
+      const Sxy2=new cv.Mat(), SxxSyy=new cv.Mat();
+      cv.multiply(Sxy, Sxy, Sxy2);
+      cv.multiply(Sxx, Syy, SxxSyy);
+      cv.subtract(SxxSyy, Sxy2, det);
+      cv.add(Sxx, Syy, tr);
+      cv.multiply(tr, tr, tr2);
+      cv.multiply(tr2, new cv.Mat(tr2.rows,tr2.cols,tr2.type(), new cv.Scalar(k)), ktr2);
+      cv.subtract(det, ktr2, R);
+
+      // Threshold
+      const Rdata=R.data32F;
+      let maxR=0; for(let i=0;i<Rdata.length;i++) if(Rdata[i]>maxR) maxR=Rdata[i];
+      const T = thRel * maxR;
+
+      // NMS via dilation + equality
+      if(nmsSize%2===0) nmsSize+=1;
+      const kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(nmsSize,nmsSize));
+      const Rdil=new cv.Mat(); cv.dilate(R, Rdil, kernel);
+
+      const H=R.rows, W=R.cols, N=H*W;
+      const Rd=R.data32F, Dd=Rdil.data32F;
+      const peaks=[]; // {x,y,score}
+      for(let y=0;y<H;y++){
+        for(let x=0;x<W;x++){
+          const i=y*W+x, v=Rd[i];
+          if(v>=T && v===Dd[i]) peaks.push({x,y,score:v});
+        }
+      }
+      // sort + topN
+      peaks.sort((a,b)=> b.score-a.score);
+      const keep = (topN>0) ? peaks.slice(0, topN) : peaks;
+
+      // cleanup
+      [gray32,Ix,Iy,Ixx,Iyy,Ixy,Sxx,Syy,Sxy,det,tr,tr2,ktr2,R,Sxy2,SxxSyy,Rdil].forEach(m=>m.delete());
+
+      return keep;
+    }
+
+    // Draw overlay: edges (green), corners (red)
+    function drawOverlay(colorBGR, edges, corners){
+      const out=colorBGR.clone();
+      const H=out.rows, W=out.cols, N=H*W;
+      const ed=edges.data;
+      // tint edge pixels green
+      for(let y=0;y<H;y++){
+        for(let x=0;x<W;x++){
+          const i=y*W + x;
+          if(ed[i]){
+            const pix = out.ucharPtr(y,x);
+            // BGR: mix with green
+            pix[0] = Math.min(255, 0.3*pix[0]);     // B
+            pix[1] = Math.min(255, 0.3*pix[1] + 178); // G
+            pix[2] = Math.min(255, 0.3*pix[2]);     // R
+          }
+        }
+      }
+      // draw corner dots
+      corners.forEach(c=>{
+        cv.circle(out, new cv.Point(c.x, c.y), 3, new cv.Scalar(0,0,255,255), 1, cv.LINE_AA);
+        cv.circle(out, new cv.Point(c.x, c.y), 1, new cv.Scalar(0,0,255,255), -1, cv.LINE_AA);
+      });
+      return out;
+    }
+
+    // RUN
+    document.getElementById('runBtn').onclick = ()=>{
+      if(!gray || !colorBGR){ log('[WARN] Load an image first.'); return; }
+
+      const t0=performance.now();
+
+      const edgeSigma = parseFloat(document.getElementById('edgeSigma').value)||1.0;
+      const edgeLow   = parseFloat(document.getElementById('edgeLow').value)||0.10;
+      const edgeHigh  = parseFloat(document.getElementById('edgeHigh').value)||0.20;
+      const sobelK    = parseInt(document.getElementById('sobelK').value)||3;
+
+      const k         = parseFloat(document.getElementById('harrisK').value)||0.04;
+      const hSigma    = parseFloat(document.getElementById('harrisSigma').value)||1.5;
+      const thRel     = parseFloat(document.getElementById('cornerTh').value)||0.01;
+      let nmsSize     = parseInt(document.getElementById('nmsSize').value)||3;
+      const topN      = parseInt(document.getElementById('topN').value)||500;
+
+      // Edges
+      const edges = simpleEdges(gray, edgeSigma, edgeLow, edgeHigh, sobelK);
+      cv.imshow(cvEdges, edges);
+
+      // Corners
+      const corners = harrisCorners(gray, k, hSigma, thRel, nmsSize, topN);
+
+      // Overlay
+      const overlay = drawOverlay(colorBGR, edges, corners);
+      cv.imshow(cvOverlay, overlay);
+      overlay.delete(); edges.delete();
+
+      document.getElementById('dlOverlay').disabled = false;
+      const ms=(performance.now()-t0).toFixed(1);
+      perfEl.textContent = `Done in ${ms} ms | corners kept: ${corners.length}`;
+      log(`[OK] Edges & Harris corners computed. corners=${corners.length}`);
+    };
+
+    // Enable run only when image loaded
+    document.getElementById('runBtn').disabled = true;
+  };
+}
+
+// ensure boot even if OpenCV.js finished loading earlier
+if (window.__opencv_loaded) { appInit(); }
+</script>
+</body>
+</html>

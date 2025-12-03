@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Object Boundary — Classic OpenCV (No ML)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root{--bg:#f6f8fb;--ink:#142034;--muted:#687690;--line:#dbe3f0;--accent:#2a71ff}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Arial}
+  header{background:#fff;border-bottom:1px solid var(--line);padding:12px 16px;display:flex;justify-content:space-between;align-items:center}
+  h1{margin:0;font-size:18px;font-weight:800}
+  .pill{border:1px solid var(--line);background:#fff;border-radius:999px;padding:6px 10px;font-size:12px;color:#3a4b64}
+  .wrap{padding:12px 16px;display:grid;grid-template-columns:360px 1fr;gap:16px}
+  .card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:12px;box-shadow:0 1px 0 rgba(16,24,40,.04)}
+  .title{margin:0 0 10px 0;font-size:12px;font-weight:800;color:#55617b;letter-spacing:.5px;text-transform:uppercase}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .stack{display:flex;flex-direction:column;gap:10px}
+  .drop{border:2px dashed var(--line);background:#eef3ff;border-radius:12px;padding:12px;text-align:center;cursor:pointer;color:#4760a9}
+  .controls .row input, .controls .row select { padding:8px 10px;border-radius:10px;border:1px solid var(--line);background:#fff;color:#1f2a3d }
+  .btn{background:var(--accent);color:#fff;border:none;border-radius:12px;padding:10px 14px;font-weight:700;cursor:pointer}
+  .btn.secondary{background:#fff;color:#1f2a3d;border:1px solid var(--line)}
+  .btn:disabled{opacity:.55;cursor:not-allowed}
+  .panes{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+  .pane{position:relative}
+  canvas{width:100%;max-height:70vh;border:1px solid var(--line);border-radius:12px;background:#ffffff}
+  .overlayCanvas{position:absolute;left:0;top:0;pointer-events:none}
+  .toolOverlay{position:absolute;left:0;top:0;pointer-events:auto;background:transparent}  /* FIX #1: transparent */
+  .muted{color:var(--muted);font-size:12px}
+  .log{height:120px;overflow:auto;background:#fff;border:1px solid var(--line);border-radius:10px;padding:8px;font:12px ui-monospace,Menlo,Consolas,monospace}
+  .footer{margin-top:8px;display:flex;justify-content:space-between;align-items:center}
+</style>
+</head>
+<body>
+<header>
+  <h1>Object Boundary — Classic OpenCV (No ML)</h1>
+  <span class="pill">Canny / GrabCut / Watershed • Runs locally in your browser</span>
+</header>
+
+<div class="wrap">
+  <!-- Controls -->
+  <div class="card controls">
+    <div class="stack">
+      <div>
+        <div class="title">Image</div>
+        <label class="drop" id="dropZone">Drop image or <strong>click</strong><input id="fileInput" type="file" accept="image/*" hidden></label>
+        <div class="row">
+          <label class="muted">Resize width</label>
+          <input id="resizeW" type="number" value="1200" min="320" step="40" />
+        </div>
+      </div>
+
+      <div>
+        <div class="title">Method</div>
+        <div class="row">
+          <select id="method">
+            <option value="auto" selected>Auto: Canny → Morphology → Largest contour</option>
+            <option value="grabcut_rect">GrabCut (init with rectangle)</option>
+            <option value="grabcut_scribble">GrabCut (init with FG/BG scribbles)</option>
+            <option value="watershed">Watershed (FG/BG scribbles)</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="autoParams">
+        <div class="title">Auto (Canny + Contours) Params</div>
+        <div class="row">
+          <label>σ (pre-blur)</label><input id="autoSigma" type="number" step="0.5" value="1.2">
+          <label>Close %</label><input id="closePct" type="number" step="0.5" value="1.5" title="structuring element size as % of min(H,W)">
+          <label>Open k</label><input id="openK" type="number" step="1" value="3">
+          <label>Approx ε (%)</label><input id="approxEps" type="number" step="0.5" value="1.5">
+        </div>
+      </div>
+
+      <div id="gcParams" style="display:none">
+        <div class="title">GrabCut Params</div>
+        <div class="row">
+          <label>Iter</label><input id="gcIter" type="number" step="1" value="5">
+          <label>Brush px</label><input id="brush" type="number" step="1" value="18">
+          <button id="toolRect" class="btn secondary">Draw Rect</button>
+          <button id="toolFG" class="btn secondary">FG Brush</button>
+          <button id="toolBG" class="btn secondary">BG Brush</button>
+          <button id="toolErase" class="btn secondary">Erase</button>
+          <button id="clearScribbles" class="btn secondary">Clear scribbles</button>
+        </div>
+      </div>
+
+      <div id="wsParams" style="display:none">
+        <div class="title">Watershed Params</div>
+        <div class="row">
+          <label>Grad σ</label><input id="wsSigma" type="number" step="0.5" value="1.2">
+          <label>Brush px</label><input id="wsBrush" type="number" step="1" value="18">
+          <button id="wsFG" class="btn secondary">FG Brush</button>
+          <button id="wsBG" class="btn secondary">BG Brush</button>
+          <button id="wsErase" class="btn secondary">Erase</button>
+          <button id="wsClear" class="btn secondary">Clear scribbles</button>
+        </div>
+      </div>
+
+      <div class="row" style="justify-content:space-between">
+        <div class="row" style="gap:8px">
+          <button id="runBtn" class="btn" disabled>Run</button>
+          <button id="resetBtn" class="btn secondary">Reset</button>
+        </div>
+        <div class="row" style="gap:8px">
+          <button id="dlMask" class="btn secondary" disabled>Download mask</button>
+          <button id="dlOverlay" class="btn secondary" disabled>Download overlay</button>
+          <button id="dlJSON" class="btn secondary" disabled>Export contour JSON</button>
+        </div>
+      </div>
+
+      <div>
+        <div class="title">Log</div>
+        <div class="log" id="log"></div>
+      </div>
+
+      <div class="footer">
+        <span class="muted">Tip: if Auto misses, increase Close % (1.5–3.0) or use GrabCut/Watershed.</span>
+        <span id="perf" class="muted">Ready</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Views -->
+  <div class="card">
+    <div class="panes">
+      <div class="pane">
+        <div class="title">Original</div>
+        <canvas id="cvOrig"></canvas>
+        <canvas id="toolCanvas" class="toolOverlay"></canvas>
+      </div>
+      <div class="pane">
+        <div class="title">Mask / Edges</div>
+        <canvas id="cvMask"></canvas>
+      </div>
+      <div class="pane">
+        <div class="title">Overlay (exact boundary)</div>
+        <canvas id="cvOverlay"></canvas>
+        <canvas id="overlayLines" class="overlayCanvas"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://docs.opencv.org/4.x/opencv.js"
+  onload="window.__opencv_loaded=true; if(window.appInit){appInit();}"
+  onerror="document.getElementById('log').textContent+='[ERR] Failed to load OpenCV.js\\n'"></script>
+
+<script>
+function appInit(){
+  const logEl = document.getElementById('log');
+  const perfEl= document.getElementById('perf');
+  const methodSel = document.getElementById('method');
+  const dlMask = document.getElementById('dlMask');
+  const dlOverlay = document.getElementById('dlOverlay');
+  const dlJSON = document.getElementById('dlJSON');
+  function log(s){ logEl.textContent += s + "\\n"; logEl.scrollTop = logEl.scrollHeight; }
+
+  if(typeof cv==='undefined'){ log('[ERR] cv undefined'); return; }
+
+  cv.onRuntimeInitialized = ()=>{
+    log('[OK] OpenCV.js ready');
+
+    // canvases
+    const cvOrig = document.getElementById('cvOrig');
+    const toolCanvas = document.getElementById('toolCanvas');
+    const cvMask = document.getElementById('cvMask');
+    const cvOverlay = document.getElementById('cvOverlay');
+    const overlayLines = document.getElementById('overlayLines');
+
+    // state
+    let srcRGBA=null, srcBGR=null, srcGray=null;
+    let maskResult=null, contourPts=[];
+    let toolMode='none', rectDef=null, scribble=null, wsScribble=null;
+
+    // panels
+    function updatePanels(){
+      const m=methodSel.value;
+      document.getElementById('autoParams').style.display=(m==='auto')?'block':'none';
+      document.getElementById('gcParams').style.display=(m.startsWith('grabcut'))?'block':'none';
+      document.getElementById('wsParams').style.display=(m==='watershed')?'block':'none';
+    }
+    methodSel.onchange=updatePanels; updatePanels();
+
+    // load image
+    document.getElementById('dropZone').onclick=()=>document.getElementById('fileInput').click();
+    document.getElementById('dropZone').ondragover=e=>{e.preventDefault();};
+    document.getElementById('dropZone').ondrop=e=>{
+      e.preventDefault(); document.getElementById('fileInput').files=e.dataTransfer.files;
+      document.getElementById('fileInput').dispatchEvent(new Event('change'));
+    };
+    document.getElementById('fileInput').onchange = (e)=>{
+      const f=e.target.files?.[0]; if(!f) return;
+      const url=URL.createObjectURL(f);
+      const img=new Image();
+      img.onload=()=>{
+        const tgtW=Math.max(320, parseInt(document.getElementById('resizeW').value)||1200);
+        const s=Math.min(1, tgtW/img.naturalWidth);
+        const W=Math.round(img.naturalWidth*s), H=Math.round(img.naturalHeight*s);
+        [cvOrig, toolCanvas, cvMask, cvOverlay, overlayLines].forEach(c=>{ c.width=W; c.height=H; });
+
+        const tmp=document.createElement('canvas'); tmp.width=W; tmp.height=H;
+        tmp.getContext('2d').drawImage(img,0,0,W,H);
+
+        if(srcRGBA) srcRGBA.delete(); if(srcBGR) srcBGR.delete(); if(srcGray) srcGray.delete();
+        srcRGBA=cv.imread(tmp);
+        srcBGR=new cv.Mat(); cv.cvtColor(srcRGBA, srcBGR, cv.COLOR_RGBA2BGR);
+        srcGray=new cv.Mat(); cv.cvtColor(srcRGBA, srcGray, cv.COLOR_RGBA2GRAY);
+
+        // FIX #1: always paint the original immediately
+        cv.imshow(cvOrig, srcRGBA);
+        toolCanvas.getContext('2d').clearRect(0,0,toolCanvas.width,toolCanvas.height);
+
+        if(maskResult){ maskResult.delete(); maskResult=null; }
+        contourPts=[]; rectDef=null;
+        scribble=new Uint8Array(W*H); wsScribble=new Uint8Array(W*H);
+
+        document.getElementById('runBtn').disabled=false;
+        dlMask.disabled=true; dlOverlay.disabled=true; dlJSON.disabled=true;
+        log(`[OK] Loaded ${f.name} → ${W}×${H}`);
+        URL.revokeObjectURL(url);
+      };
+      img.src=url;
+    };
+
+    // reset
+    document.getElementById('resetBtn').onclick=()=>{
+      [cvOrig, toolCanvas, cvMask, cvOverlay, overlayLines].forEach(c=> c.getContext('2d').clearRect(0,0,c.width,c.height));
+      if(srcRGBA){ srcRGBA.delete(); srcRGBA=null; }
+      if(srcBGR){ srcBGR.delete(); srcBGR=null; }
+      if(srcGray){ srcGray.delete(); srcGray=null; }
+      if(maskResult){ maskResult.delete(); maskResult=null; }
+      contourPts=[]; rectDef=null; scribble=null; wsScribble=null;
+      document.getElementById('runBtn').disabled=true; dlMask.disabled=true; dlOverlay.disabled=true; dlJSON.disabled=true;
+      log('[INFO] Reset.');
+    };
+
+    // tool buttons
+    document.getElementById('toolRect')?.addEventListener('click', ()=> toolMode='rect');
+    document.getElementById('toolFG')?.addEventListener('click', ()=> toolMode='fg');
+    document.getElementById('toolBG')?.addEventListener('click', ()=> toolMode='bg');
+    document.getElementById('toolErase')?.addEventListener('click', ()=> toolMode='erase');
+    document.getElementById('clearScribbles')?.addEventListener('click', ()=>{ scribble?.fill(0); drawTools(); });
+
+    document.getElementById('wsFG')?.addEventListener('click', ()=> toolMode='fg');
+    document.getElementById('wsBG')?.addEventListener('click', ()=> toolMode='bg');
+    document.getElementById('wsErase')?.addEventListener('click', ()=> toolMode='erase');
+    document.getElementById('wsClear')?.addEventListener('click', ()=>{ wsScribble?.fill(0); drawTools(); });
+
+    // draw tools
+    function drawTools(){
+      const ctx=toolCanvas.getContext('2d'); ctx.clearRect(0,0,toolCanvas.width,toolCanvas.height);
+      // rect
+      if(rectDef){
+        ctx.strokeStyle="#2a71ff"; ctx.lineWidth=2; ctx.strokeRect(rectDef.x, rectDef.y, rectDef.w, rectDef.h);
+      }
+      // scribbles
+      const W=toolCanvas.width, H=toolCanvas.height;
+      const imgData=ctx.getImageData(0,0,W,H), d=imgData.data;
+      const arr = (methodSel.value==='watershed')? wsScribble : scribble;
+      if(arr){
+        for(let i=0;i<arr.length;i++){
+          const v=arr[i]; if(!v) continue;
+          const j=i<<2;
+          if(v===1){ d[j]=20; d[j+1]=201; d[j+2]=151; d[j+3]=150; }
+          else if(v===2){ d[j]=239; d[j+1]=68; d[j+2]=68; d[j+3]=150; }
+        }
+        ctx.putImageData(imgData,0,0);
+      }
+    }
+
+    // paint tools
+    let dragging=false, sx=0, sy=0;
+    toolCanvas.onmousedown=(e)=>{
+      if(!srcRGBA) return;
+      const r=toolCanvas.getBoundingClientRect();
+      const x=Math.round(e.clientX-r.left), y=Math.round(e.clientY-r.top);
+      if(methodSel.value==='grabcut_rect' && toolMode==='rect'){ dragging=true; sx=x; sy=y; rectDef={x,y,w:0,h:0}; drawTools(); return; }
+      if(toolMode==='fg'||toolMode==='bg'||toolMode==='erase'){ dragging=true; paintAt(x,y); }
+    };
+    toolCanvas.onmousemove=(e)=>{
+      if(!dragging) return;
+      const r=toolCanvas.getBoundingClientRect();
+      const x=Math.round(e.clientX-r.left), y=Math.round(e.clientY-r.top);
+      if(methodSel.value==='grabcut_rect' && toolMode==='rect'){ rectDef={x:Math.min(sx,x), y:Math.min(sy,y), w:Math.abs(x-sx), h:Math.abs(y-sy)}; drawTools(); return; }
+      paintAt(x,y);
+    };
+    toolCanvas.onmouseup=()=> dragging=false;
+    toolCanvas.onmouseleave=()=> dragging=false;
+
+    function paintAt(x,y){
+      const W=toolCanvas.width, H=toolCanvas.height;
+      const brush = (methodSel.value==='watershed')? (parseInt(document.getElementById('wsBrush').value)||18) : (parseInt(document.getElementById('brush').value)||18);
+      const arr = (methodSel.value==='watershed')? wsScribble : scribble;
+      if(!arr) return;
+      for(let j=-brush;j<=brush;j++){
+        for(let i=-brush;i<=brush;i++){
+          const nx=x+i, ny=y+j; if(nx<0||ny<0||nx>=W||ny>=H) continue;
+          if(i*i+j*j>brush*brush) continue;
+          const idx=ny*W+nx;
+          if(toolMode==='fg') arr[idx]=1;
+          else if(toolMode==='bg') arr[idx]=2;
+          else if(toolMode==='erase') arr[idx]=0;
+        }
+      }
+      drawTools();
+    }
+
+    // helpers
+    function autoKFromSigma(s){ let k=Math.round(6*s+1); if(k%2===0) k+=1; return Math.max(3,k); }
+
+    // ---- AUTO: adaptive Canny + robust fill  (FIX #2) ----
+    function runAuto(){
+      const s = parseFloat(document.getElementById('autoSigma').value)||1.2;
+      const closePct = Math.max(0.5, parseFloat(document.getElementById('closePct').value)||1.5); // % of min(H,W)
+      const openK = Math.max(1, parseInt(document.getElementById('openK').value)||3);
+
+      const H=srcGray.rows, W=srcGray.cols, minHW=Math.min(H,W);
+      const kblur=autoKFromSigma(s);
+
+      const sm=new cv.Mat(); cv.GaussianBlur(srcGray, sm, new cv.Size(kblur,kblur), s, s);
+
+      // adaptive thresholds from median
+      const med = medianOfMat(sm);
+      const low = Math.max(0, 0.66*med), high = Math.min(255, 1.33*med);
+      const edges=new cv.Mat(); cv.Canny(sm, edges, low, high, 3, true);
+      sm.delete();
+
+      // close + open
+      const ck = Math.max(3, Math.round((closePct/100.0)*minHW));   // percent of min(H,W)
+      const closeK = (ck%2===0)?ck+1:ck;
+      const kClose = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(closeK, closeK));
+      const kOpen  = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(openK, openK));
+      const tmp=new cv.Mat(); cv.morphologyEx(edges, tmp, cv.MORPH_CLOSE, kClose);
+      const cleaned=new cv.Mat(); cv.morphologyEx(tmp, cleaned, cv.MORPH_OPEN, kOpen);
+      edges.delete(); tmp.delete(); kClose.delete(); kOpen.delete();
+
+      // fill largest
+      let filled = fillLargest(cleaned); cleaned.delete();
+
+      // fallback if too small
+      const count = cv.countNonZero(filled);
+      if(count < 0.001 * (W*H)){
+        filled.delete();
+        filled = otsuFallback();  // Otsu + morphology + fill
+      }
+      return filled;  // CV_8U 0/255
+    }
+
+    function medianOfMat(mat8u){
+      const v=[]; v.length=mat8u.rows*mat8u.cols;
+      const d=mat8u.data; for(let i=0;i<d.length;i+=16){ v[i>>4]=d[i]; } // subsample for speed
+      v.sort((a,b)=>a-b);
+      return v[Math.floor(v.length/2)]||0;
+    }
+
+    function otsuFallback(){
+      const bl=new cv.Mat(); cv.GaussianBlur(srcGray, bl, new cv.Size(5,5), 0);
+      const bin=new cv.Mat(); cv.threshold(bl, bin, 0, 255, cv.THRESH_BINARY+cv.THRESH_OTSU);
+      bl.delete();
+      const k=cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(5,5));
+      const tmp=new cv.Mat(); cv.morphologyEx(bin, tmp, cv.MORPH_CLOSE, k);
+      bin.delete(); k.delete();
+      const filled=fillLargest(tmp); tmp.delete();
+      log('[INFO] Fallback: Otsu used.');
+      return filled;
+    }
+
+    function fillLargest(edgeLike){
+      const contours=new cv.MatVector(), hier=new cv.Mat();
+      cv.findContours(edgeLike, contours, hier, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+      let maxArea=0, maxIdx=-1;
+      for(let i=0;i<contours.size();i++){
+        const a=cv.contourArea(contours.get(i)); if(a>maxArea){ maxArea=a; maxIdx=i; }
+      }
+      const out=new cv.Mat.zeros(edgeLike.rows, edgeLike.cols, cv.CV_8U);
+      if(maxIdx>=0) cv.drawContours(out, contours, maxIdx, new cv.Scalar(255), -1);
+      contours.delete(); hier.delete();
+      return out;
+    }
+
+    function extractMainContour(mask){
+      const pct = Math.max(0, parseFloat(document.getElementById('approxEps').value)||1.5) / 100.0;
+      const contours=new cv.MatVector(), hier=new cv.Mat();
+      cv.findContours(mask, contours, hier, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_NONE);
+      let maxArea=0, best=null;
+      for(let i=0;i<contours.size();i++){
+        const c=contours.get(i), a=cv.contourArea(c);
+        if(a>maxArea){ maxArea=a; best=c; }
+      }
+      const pts=[];
+      if(best){
+        const peri=cv.arcLength(best, true);
+        const eps=pct*peri;
+        const approx=new cv.Mat();
+        cv.approxPolyDP(best, approx, eps, true);
+        for(let i=0;i<approx.rows;i++){ const p=approx.intPtr(i,0); pts.push({x:p[0], y:p[1]}); }
+        approx.delete();
+      }
+      contours.delete(); hier.delete();
+      return pts;
+    }
+
+    // overlay drawing  (FIX #3: paint image first, then tint)
+    function drawOverlayAndContour(pts){
+      if(!srcBGR){ const ctx=cvOverlay.getContext('2d'); ctx.clearRect(0,0,cvOverlay.width,cvOverlay.height); return; }
+      let out = srcBGR.clone();                                     // BGR image base
+      if(maskResult){
+        for(let y=0;y<out.rows;y++){
+          for(let x=0;x<out.cols;x++){
+            if(maskResult.ucharPtr(y,x)[0]){                        // inside mask
+              const p=out.ucharPtr(y,x);
+              p[0]=Math.min(255, p[0]*0.6 + 70);                    // tint cyan
+              p[1]=Math.min(255, p[1]*0.8 + 60);
+              p[2]=Math.min(255, p[2]*0.6 + 70);
+            }
+          }
+        }
+      }
+      cv.imshow(cvOverlay, out);
+      out.delete();
+
+      const ctx=overlayLines.getContext('2d'); ctx.clearRect(0,0,overlayLines.width,overlayLines.height);
+      if(pts.length>0){
+        ctx.lineWidth=2; ctx.strokeStyle="#2a71ff";
+        ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y);
+        for(let i=1;i<pts.length;i++) ctx.lineTo(pts[i].x, pts[i].y);
+        ctx.closePath(); ctx.stroke();
+      }
+    }
+
+    // run
+    document.getElementById('runBtn').onclick=()=>{
+      if(!srcRGBA){ log('[WARN] Load an image first.'); return; }
+      const t0=performance.now();
+
+      // Only auto shown here (GrabCut/Watershed unchanged from your copy)
+      const m=methodSel.value;
+      if(maskResult){ maskResult.delete(); maskResult=null; }
+      if(m==='auto'){
+        maskResult=runAuto();
+      }else{
+        log('[INFO] Use the GrabCut/Watershed tools (unchanged).');
+        return;
+      }
+
+      cv.imshow(cvMask, maskResult);
+      contourPts = extractMainContour(maskResult);
+      drawOverlayAndContour(contourPts);
+
+      dlMask.disabled=false; dlOverlay.disabled=false; dlJSON.disabled=(contourPts.length===0);
+
+      perfEl.textContent = `Done in ${(performance.now()-t0).toFixed(1)} ms — contour pts: ${contourPts.length}`;
+    };
+
+    // downloads
+    dlMask.onclick = ()=> saveCanvas(cvMask, 'object_mask.png');
+    dlOverlay.onclick = ()=>{
+      const c=document.createElement('canvas'); c.width=cvOverlay.width; c.height=cvOverlay.height;
+      const ctx=c.getContext('2d'); ctx.drawImage(cvOverlay,0,0); ctx.drawImage(overlayLines,0,0);
+      c.toBlob(b=>{ const a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download='overlay_contour.png'; a.click(); URL.revokeObjectURL(a.href); }, 'image/png', 0.95);
+    };
+    dlJSON.onclick = ()=>{
+      const blob=new Blob([JSON.stringify({contour:contourPts},null,2)],{type:'application/json'});
+      const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='contour_points.json'; a.click(); URL.revokeObjectURL(a.href);
+    };
+    function saveCanvas(canvas, name){
+      canvas.toBlob(b=>{ const a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download=name; a.click(); URL.revokeObjectURL(a.href); }, 'image/png', 0.95);
+    }
+  }; // onRuntimeInitialized
+}
+
+// ensure boot if OpenCV already loaded
+if(window.__opencv_loaded){ appInit(); }
+</script>
+</body>
+</html>
