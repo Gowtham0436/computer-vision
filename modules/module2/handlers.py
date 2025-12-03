@@ -408,9 +408,9 @@ def restore_image_handler(image_data):
         return {'success': False, 'error': 'Invalid image'}
     
     # Step 1: Apply Gaussian blur to create L_b
-    # Using kernel size 25x25 and sigma=5 for visible blur
-    ksize = 25
-    sigma = 5.0
+    # Using kernel size 51x51 and sigma=12 for strong visible blur
+    ksize = 51
+    sigma = 12.0
     blurred = cv2.GaussianBlur(original, (ksize, ksize), sigma)
     
     # Step 2: Restore image using Enhanced Wiener Filter
@@ -437,19 +437,27 @@ def restore_image_handler(image_data):
     gray = cv2.cvtColor(blurred, cv2.COLOR_BGR2GRAY)
     image_variance = np.var(gray.astype(np.float32))
     
-    # Higher variance (more detail) = can use lower K for better restoration
-    # Lower variance (smoother) = need higher K to avoid noise
-    base_K = 0.005
+    # For stronger blur, use more aggressive restoration with lower K
+    base_K = 0.001  # Lower base for stronger restoration
     if image_variance > 1000:  # High detail image
-        K = base_K * 0.5  # More aggressive restoration
+        K = base_K * 0.3  # Very aggressive restoration
     elif image_variance > 500:  # Medium detail
-        K = base_K  # Balanced
+        K = base_K * 0.5  # Aggressive restoration
     else:  # Low detail/smooth image
-        K = base_K * 2  # More conservative to avoid noise
+        K = base_K  # Balanced
     
     # Compute H* (complex conjugate) and |H|^2
     H_conj = np.conj(H_fft)
     H_mag_sq = np.abs(H_fft) ** 2
+    
+    # Enhanced Wiener Filter with frequency-dependent regularization
+    # Lower frequencies get less regularization for better restoration
+    freq_weights = np.ones_like(H_mag_sq)
+    center_h, center_w = H // 2, W // 2
+    y_coords, x_coords = np.ogrid[:H, :W]
+    dist_from_center = np.sqrt((x_coords - center_w)**2 + (y_coords - center_h)**2)
+    max_dist = np.sqrt(center_h**2 + center_w**2)
+    freq_weights = 1.0 + 0.5 * (dist_from_center / max_dist)  # More regularization at high frequencies
     
     # Process each color channel separately
     restored_channels = []
@@ -460,8 +468,9 @@ def restore_image_handler(image_data):
         # FFT of blurred image
         G_fft = np.fft.fft2(blurred_channel)
         
-        # Wiener Filter: F_estimated = (H* / (|H|^2 + K)) * G
-        denominator = H_mag_sq + K
+        # Enhanced Wiener Filter with frequency-dependent regularization
+        denominator = H_mag_sq + K * freq_weights
+        denominator = np.maximum(denominator, 1e-10)  # Avoid division by very small values
         F_estimated_fft = (H_conj / denominator) * G_fft
         
         # Inverse FFT
@@ -479,8 +488,8 @@ def restore_image_handler(image_data):
     # Only apply if it improves the result
     restored_float = restored.astype(np.float32)
     
-    # Apply 2 iterations of RL deconvolution for refinement
-    for iteration in range(2):
+    # Apply 8 iterations of RL deconvolution for better restoration of strong blur
+    for iteration in range(8):
         restored_channels_float = []
         for c in range(3):
             channel = restored_float[:, :, c]
@@ -497,8 +506,9 @@ def restore_image_handler(image_data):
             k2d_flipped = np.flip(np.flip(k2d, 0), 1)
             correction = cv2.filter2D(ratio, -1, k2d_flipped)
             
-            # Update with damping to prevent noise amplification
-            damping = 0.7  # Damping factor to prevent over-correction
+            # Adaptive damping - start aggressive, become conservative
+            damping = 0.85 - (iteration * 0.05)  # 0.85 -> 0.50 over iterations
+            damping = max(0.5, damping)
             channel_updated = channel * (1 - damping + damping * correction)
             channel_updated = np.clip(channel_updated, 0, 255)
             restored_channels_float.append(channel_updated)
@@ -512,13 +522,12 @@ def restore_image_handler(image_data):
     restored_lab = cv2.cvtColor(restored, cv2.COLOR_BGR2LAB)
     l_channel, a_channel, b_channel = cv2.split(restored_lab)
     
-    # Apply adaptive unsharp masking on L channel
-    # Strength adapts to local contrast
-    gaussian_l = cv2.GaussianBlur(l_channel, (5, 5), 1.5)
+    # Stronger adaptive unsharp masking on L channel for better restoration
+    gaussian_l = cv2.GaussianBlur(l_channel, (3, 3), 1.0)
     contrast = cv2.absdiff(l_channel.astype(np.float32), gaussian_l.astype(np.float32))
     
-    # Adaptive strength: stronger sharpening in high-contrast areas
-    strength_map = np.clip(contrast / 40.0, 0.2, 1.5)
+    # More aggressive sharpening for stronger blur restoration
+    strength_map = np.clip(contrast / 30.0, 0.3, 2.0)  # Increased max strength
     l_sharpened = l_channel.astype(np.float32) + (l_channel.astype(np.float32) - gaussian_l.astype(np.float32)) * strength_map
     l_sharpened = np.clip(l_sharpened, 0, 255).astype(np.uint8)
     
@@ -526,9 +535,14 @@ def restore_image_handler(image_data):
     restored_lab = cv2.merge([l_sharpened, a_channel, b_channel])
     restored = cv2.cvtColor(restored_lab, cv2.COLOR_LAB2BGR)
     
-    # Final edge-preserving smoothing to reduce artifacts
-    # Use bilateral filter to smooth noise while preserving edges
-    restored = cv2.bilateralFilter(restored, 5, 50, 50)
+    # Additional sharpening pass using Laplacian kernel
+    kernel = np.array([[-1, -1, -1],
+                       [-1,  9, -1],
+                       [-1, -1, -1]]) * 0.1  # Subtle sharpening
+    restored = cv2.filter2D(restored, -1, kernel)
+    
+    # Light edge-preserving smoothing to reduce artifacts
+    restored = cv2.bilateralFilter(restored, 3, 30, 30)
     
     # Final clipping
     restored = np.clip(restored, 0, 255).astype(np.uint8)

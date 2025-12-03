@@ -35,6 +35,9 @@ cvenv/
 test_*.py
 *_test.py
 
+# Keep entrypoint script
+!entrypoint.sh
+
 # OS
 .DS_Store
 Thumbs.db
