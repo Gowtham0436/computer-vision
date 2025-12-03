@@ -342,14 +342,16 @@ async function matchTemplate(){
         
         ctx.drawImage(img,0,0); 
       };
-      img.src = json.annotated_image;
+      // Add data URL prefix if not already present
+      img.src = json.annotated_image.startsWith('data:') ? json.annotated_image : 'data:image/png;base64,' + json.annotated_image;
       
       // Display heatmap if available
       if(json.heatmap_image) {
         const heatmapImg = document.getElementById('heatmapImg');
         if(heatmapImg) {
           heatmapImg.onerror = () => console.error('Failed to load heatmap');
-          heatmapImg.src = json.heatmap_image;
+          // Add data URL prefix if not already present
+          heatmapImg.src = json.heatmap_image.startsWith('data:') ? json.heatmap_image : 'data:image/png;base64,' + json.heatmap_image;
           document.getElementById('heatmapSection').style.display = 'block';
         }
       }

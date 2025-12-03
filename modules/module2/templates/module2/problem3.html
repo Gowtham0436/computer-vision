@@ -261,6 +261,11 @@ async function detectObjects(){
         octx.drawImage(o,0,0); 
       }; o.src = sceneImage;
       
+      // Helper function to add data URL prefix if needed
+      const addDataUrlPrefix = (base64Str) => {
+        return base64Str && base64Str.startsWith('data:') ? base64Str : 'data:image/png;base64,' + base64Str;
+      };
+      
       const b = new Image(); b.onload=()=>{ 
         const maxW = Math.min(window.innerWidth * 0.45, b.width);
         const maxH = Math.min(window.innerHeight * 0.7, b.height);
@@ -271,7 +276,7 @@ async function detectObjects(){
         bctx.imageSmoothingEnabled = true;
         bctx.imageSmoothingQuality = 'high';
         bctx.drawImage(b,0,0); 
-      }; b.src = res.blurred_image;
+      }; b.src = addDataUrlPrefix(res.blurred_image);
 
       document.getElementById('scenePreview').style.display='none';
       document.getElementById('blurResultSection').style.display='block';

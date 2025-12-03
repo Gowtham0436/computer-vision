@@ -58,7 +58,8 @@
       <label>Load SAM2 NPZ File:</label>
       <input type="file" id="sam2File" accept=".npz">
       <button id="loadSam2Btn" class="btn">Load Segmentation</button>
-      <button id="captureFrameBtn" class="btn" style="margin-left: 10px; background: #9c27b0;">Capture Frame & Create NPZ</button>
+      <span style="margin: 0 10px; color: #666;">OR</span>
+      <button id="selectObjectBtn" class="btn" style="background: #9c27b0;">Select Object to Track</button>
     </div>
   </div>
   
@@ -73,7 +74,7 @@
     <ul>
       <li><strong>Marker-Based:</strong> Show an ArUco marker or QR code to the camera</li>
       <li><strong>Marker-Less:</strong> Click "Select Region" to select an object to track</li>
-      <li><strong>SAM2:</strong> Click "Select Region" to select the area you want to track, then the NPZ will be created automatically. Or use "Capture Frame & Create NPZ" for automatic detection, or load a pre-computed NPZ file.</li>
+      <li><strong>SAM2:</strong> Load a pre-computed NPZ file OR click "Select Object to Track" to draw a box around the object you want to track</li>
     </ul>
   </div>
 </div>

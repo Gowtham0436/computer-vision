@@ -24,6 +24,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
+# Copy and make startup script executable
+COPY start.sh /app/start.sh
+RUN chmod +x /app/start.sh
+
 # Expose port (Railway will set PORT env var)
 EXPOSE 8080
 
@@ -31,6 +35,6 @@ EXPOSE 8080
 ENV OPENCV_IO_ENABLE_OPENEXR=0
 ENV QT_QPA_PLATFORM=offscreen
 
-# Run the application (Railway sets PORT env var)
-CMD gunicorn app:app --bind 0.0.0.0:${PORT:-8080} --workers 2 --threads 2 --timeout 120
+# Run the application using startup script
+CMD ["/app/start.sh"]
 

@@ -128,6 +128,11 @@ async function restoreImage(){
       const bc = document.getElementById('blurCanvas');
       const rc = document.getElementById('restCanvas');
 
+      // Helper function to add data URL prefix if needed
+      const addDataUrlPrefix = (base64Str) => {
+        return base64Str && base64Str.startsWith('data:') ? base64Str : 'data:image/png;base64,' + base64Str;
+      };
+      
       const o = new Image(); o.onload=()=>{ 
         const maxW = Math.min(window.innerWidth * 0.28, o.width);
         const maxH = Math.min(window.innerHeight * 0.7, o.height);
@@ -138,7 +143,7 @@ async function restoreImage(){
         octx.imageSmoothingEnabled = true;
         octx.imageSmoothingQuality = 'high';
         octx.drawImage(o,0,0); 
-      }; o.src = res.original_image;
+      }; o.src = addDataUrlPrefix(res.original_image);
       
       const b = new Image(); b.onload=()=>{ 
         const maxW = Math.min(window.innerWidth * 0.28, b.width);
@@ -150,7 +155,7 @@ async function restoreImage(){
         bctx.imageSmoothingEnabled = true;
         bctx.imageSmoothingQuality = 'high';
         bctx.drawImage(b,0,0); 
-      }; b.src = res.blurred_image;
+      }; b.src = addDataUrlPrefix(res.blurred_image);
       
       const r = new Image(); r.onload=()=>{ 
         const maxW = Math.min(window.innerWidth * 0.28, r.width);
@@ -162,7 +167,7 @@ async function restoreImage(){
         rctx.imageSmoothingEnabled = true;
         rctx.imageSmoothingQuality = 'high';
         rctx.drawImage(r,0,0); 
-      }; r.src = res.restored_image;
+      }; r.src = addDataUrlPrefix(res.restored_image);
 
       document.getElementById('previewSection').style.display='none';
       document.getElementById('resultSection').style.display='block';
