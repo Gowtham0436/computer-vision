@@ -10,6 +10,8 @@ Combined implementation for assignments 5 and 6:
 
 import cv2
 import numpy as np
+import base64
+import io
 from core.utils import decode_base64_image, encode_image_to_base64
 
 def compute_motion_estimate_handler(image1_data, image2_data):
@@ -91,5 +93,91 @@ def compute_motion_estimate_handler(image1_data, image2_data):
         'std_motion': [float(std_motion[0]), float(std_motion[1])],
         'num_features': len(good_new),
         'note': 'Motion tracking equation: I(x+u, y+v, t+1) = I(x, y, t) where (u,v) is motion vector'
+    }
+
+def create_sam2_npz_from_frame(image_data):
+    """
+    Create SAM2 NPZ file from a captured video frame.
+    Uses boundary detection to create a mask, then generates NPZ file.
+    
+    Args:
+        image_data: Base64 encoded image (captured frame)
+        
+    Returns:
+        Dictionary with NPZ file data (base64 encoded) and mask preview
+    """
+    # Decode image first to validate
+    image = decode_base64_image(image_data)
+    if image is None:
+        return {'success': False, 'error': 'Invalid image - could not decode base64 data'}
+    
+    # Import boundary detection from module3
+    from modules.module3.handlers import detect_boundary_handler
+    
+    # Detect boundary - pass as base64 string (with or without data URL prefix)
+    # detect_boundary_handler uses decode_base64_image which handles both formats
+    # But if it's just raw base64, add the prefix for consistency
+    if not image_data.startswith('data:'):
+        image_data_with_prefix = f'data:image/jpeg;base64,{image_data}'
+    else:
+        image_data_with_prefix = image_data
+    
+    try:
+        result = detect_boundary_handler(image_data_with_prefix)
+    except Exception as e:
+        return {'success': False, 'error': f'Boundary detection failed: {str(e)}'}
+    
+    if result is None:
+        return {'success': False, 'error': 'Boundary detection returned None - check image format'}
+    
+    if not isinstance(result, dict):
+        return {'success': False, 'error': f'Unexpected result type: {type(result)}'}
+    
+    if not result.get('success', False):
+        error_msg = result.get('error', 'Failed to detect object boundary')
+        return {'success': False, 'error': error_msg}
+    
+    # Get boundary points
+    if 'boundary_points' not in result:
+        return {'success': False, 'error': 'Boundary detection did not return boundary_points'}
+    
+    boundary_points = np.array(result['boundary_points'], dtype=np.int32)
+    h, w = image.shape[:2]
+    
+    # Create binary mask
+    mask = np.zeros((h, w), dtype=np.uint8)
+    cv2.fillPoly(mask, [boundary_points], 255)
+    
+    # Compute centroid
+    moments = cv2.moments(mask)
+    if moments['m00'] == 0:
+        return {'success': False, 'error': 'Could not compute centroid'}
+    
+    cx = moments['m10'] / moments['m00']
+    cy = moments['m01'] / moments['m00']
+    centroid = np.array([[cx, cy]], dtype=np.float32)
+    
+    # Reshape mask to (1, H, W) format
+    mask_reshaped = (mask > 0).astype(np.uint8).reshape(1, h, w)
+    
+    # Create NPZ file in memory
+    npz_buffer = io.BytesIO()
+    np.savez(npz_buffer, masks=mask_reshaped, centroids=centroid)
+    npz_buffer.seek(0)
+    
+    # Encode NPZ to base64
+    npz_base64 = base64.b64encode(npz_buffer.read()).decode('utf-8')
+    
+    # Create mask preview
+    mask_preview = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
+    mask_preview_encoded = encode_image_to_base64(mask_preview)
+    
+    return {
+        'success': True,
+        'npz_file': npz_base64,
+        'mask_preview': mask_preview_encoded,
+        'mask_shape': [1, h, w],
+        'centroid': [float(cx), float(cy)],
+        'message': 'NPZ file created successfully. Download and use it for tracking.'
     }
 

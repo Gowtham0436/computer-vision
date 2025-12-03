@@ -7,6 +7,8 @@ class ObjectTracker {
         this.template = null;
         this.templateRect = null;
         this.sam2Data = null;
+        this.sam2Template = null; // Original template image for SAM2 tracking
+        this.sam2TemplateRect = null; // Bounding box of template
         this.arucoDetector = null;
         this.qrDetector = null;
         this.tracker = null;
@@ -92,6 +94,8 @@ class ObjectTracker {
         this.template = null;
         this.templateRect = null;
         this.sam2Data = null;
+        this.sam2Template = null;
+        this.sam2TemplateRect = null;
         this.tracker = null;
     }
     
@@ -571,7 +575,7 @@ class ObjectTracker {
     }
     
     trackWithMasks(src, dst) {
-        // Track objects using actual segmentation masks
+        // Track objects using actual segmentation masks with template matching
         if (!this.sam2Masks || this.sam2Masks.length === 0) {
             return false;
         }
@@ -593,38 +597,133 @@ class ObjectTracker {
                 continue;
             }
             
-            // Scale mask to match current frame size if needed
-            let scaledMask = mask;
-            if (mask.rows !== src.rows || mask.cols !== src.cols) {
-                scaledMask = new cv.Mat();
-                cv.resize(mask, scaledMask, new cv.Size(src.cols, src.rows), 0, 0, cv.INTER_LINEAR);
+            // Get bounding box from original mask (at original resolution)
+            const originalRect = cv.boundingRect(mask);
+            
+            // Use template matching if we have the original template
+            let trackedRect = originalRect;
+            let trackedCentroid = centroid;
+            
+            if (this.sam2Template && !this.sam2Template.empty() && this.sam2TemplateRect) {
+                // Convert to grayscale for template matching
+                let srcGray = new cv.Mat();
+                let templateGray = new cv.Mat();
+                
+                if (src.channels() === 3 || src.channels() === 4) {
+                    cv.cvtColor(src, srcGray, cv.COLOR_RGBA2GRAY);
+                } else {
+                    srcGray = src.clone();
+                }
+                
+                if (this.sam2Template.channels() === 3 || this.sam2Template.channels() === 4) {
+                    cv.cvtColor(this.sam2Template, templateGray, cv.COLOR_RGBA2GRAY);
+                } else {
+                    templateGray = this.sam2Template.clone();
+                }
+                
+                // Perform template matching
+                const result = new cv.Mat();
+                cv.matchTemplate(srcGray, templateGray, result, cv.TM_CCOEFF_NORMED);
+                
+                // Find best match
+                const minMax = cv.minMaxLoc(result);
+                const maxVal = minMax.maxVal;
+                const maxPoint = minMax.maxLoc;
+                
+                // Only use match if confidence is good (>0.4)
+                if (maxVal > 0.4) {
+                    // Use the template size directly (it's already at the right scale)
+                    trackedRect = new cv.Rect(
+                        maxPoint.x,
+                        maxPoint.y,
+                        this.sam2TemplateRect.width,
+                        this.sam2TemplateRect.height
+                    );
+                    
+                    trackedCentroid = {
+                        x: maxPoint.x + (trackedRect.width / 2),
+                        y: maxPoint.y + (trackedRect.height / 2)
+                    };
+                } else {
+                    // Low confidence - fall back to scaled mask position
+                    const scaleX = src.cols / mask.cols;
+                    const scaleY = src.rows / mask.rows;
+                    
+                    trackedRect = new cv.Rect(
+                        Math.round(originalRect.x * scaleX),
+                        Math.round(originalRect.y * scaleY),
+                        Math.round(originalRect.width * scaleX),
+                        Math.round(originalRect.height * scaleY)
+                    );
+                    
+                    trackedCentroid = {
+                        x: centroid.x * scaleX,
+                        y: centroid.y * scaleY
+                    };
+                }
+                
+                result.delete();
+                srcGray.delete();
+                templateGray.delete();
+            } else {
+                // No template - scale mask to current frame size
+                const scaleX = src.cols / mask.cols;
+                const scaleY = src.rows / mask.rows;
+                
+                trackedRect = new cv.Rect(
+                    Math.round(originalRect.x * scaleX),
+                    Math.round(originalRect.y * scaleY),
+                    Math.round(originalRect.width * scaleX),
+                    Math.round(originalRect.height * scaleY)
+                );
+                
+                trackedCentroid = {
+                    x: centroid.x * scaleX,
+                    y: centroid.y * scaleY
+                };
             }
             
-            // Convert binary mask to RGBA for overlay
-            const maskRGBA = new cv.Mat();
-            cv.cvtColor(scaledMask, maskRGBA, cv.COLOR_GRAY2RGBA);
+            // Scale mask to match current frame size
+            let scaledMask = new cv.Mat();
+            cv.resize(mask, scaledMask, new cv.Size(src.cols, src.rows), 0, 0, cv.INTER_LINEAR);
             
-            // Apply mask color
-            const colorMat = new cv.Mat(maskRGBA.rows, maskRGBA.cols, cv.CV_8UC4, maskColor);
-            cv.bitwise_and(maskRGBA, colorMat, maskRGBA);
+            // Translate mask to tracked position
+            const maskTranslated = new cv.Mat.zeros(src.rows, src.cols, cv.CV_8UC1);
+            const offsetX = trackedRect.x - originalRect.x;
+            const offsetY = trackedRect.y - originalRect.y;
             
-            // Add to combined mask
-            cv.add(combinedMask, maskRGBA, combinedMask);
+            // Copy mask to new position
+            const roi = new cv.Rect(
+                Math.max(0, trackedRect.x),
+                Math.max(0, trackedRect.y),
+                Math.min(trackedRect.width, src.cols - Math.max(0, trackedRect.x)),
+                Math.min(trackedRect.height, src.rows - Math.max(0, trackedRect.y))
+            );
             
-            // Compute bounding box from mask
-            const rect = cv.boundingRect(scaledMask);
+            if (roi.width > 0 && roi.height > 0) {
+                const maskRoi = scaledMask.roi(new cv.Rect(
+                    Math.max(0, -offsetX),
+                    Math.max(0, -offsetY),
+                    roi.width,
+                    roi.height
+                ));
+                const maskTranslatedRoi = maskTranslated.roi(roi);
+                maskRoi.copyTo(maskTranslatedRoi);
+                maskRoi.delete();
+                maskTranslatedRoi.delete();
+            }
             
-            // Draw bounding box using two points
-            const pt1 = new cv.Point(rect.x, rect.y);
-            const pt2 = new cv.Point(rect.x + rect.width, rect.y + rect.height);
+            // Draw bounding box
+            const pt1 = new cv.Point(trackedRect.x, trackedRect.y);
+            const pt2 = new cv.Point(trackedRect.x + trackedRect.width, trackedRect.y + trackedRect.height);
             cv.rectangle(dst, pt1, pt2, borderColor, 3);
             
             // Draw corner points
             const corners = [
-                new cv.Point(rect.x, rect.y),
-                new cv.Point(rect.x + rect.width, rect.y),
-                new cv.Point(rect.x + rect.width, rect.y + rect.height),
-                new cv.Point(rect.x, rect.y + rect.height)
+                new cv.Point(trackedRect.x, trackedRect.y),
+                new cv.Point(trackedRect.x + trackedRect.width, trackedRect.y),
+                new cv.Point(trackedRect.x + trackedRect.width, trackedRect.y + trackedRect.height),
+                new cv.Point(trackedRect.x, trackedRect.y + trackedRect.height)
             ];
             
             corners.forEach(corner => {
@@ -633,7 +732,7 @@ class ObjectTracker {
             });
             
             // Draw centroid with crosshair
-            const centerPt = new cv.Point(Math.round(centroid.x), Math.round(centroid.y));
+            const centerPt = new cv.Point(Math.round(trackedCentroid.x), Math.round(trackedCentroid.y));
             cv.circle(dst, centerPt, 8, centerColor, -1);
             cv.circle(dst, centerPt, 12, centerColor, 2);
             
@@ -648,10 +747,20 @@ class ObjectTracker {
                 new cv.Point(centerPt.x, centerPt.y + crossSize),
                 borderColor, 2);
             
-            // Clean up scaled mask if we created it
-            if (scaledMask !== mask) {
-                scaledMask.delete();
-            }
+            // Convert binary mask to RGBA for overlay
+            const maskRGBA = new cv.Mat();
+            cv.cvtColor(maskTranslated, maskRGBA, cv.COLOR_GRAY2RGBA);
+            
+            // Apply mask color
+            const colorMat = new cv.Mat(maskRGBA.rows, maskRGBA.cols, cv.CV_8UC4, maskColor);
+            cv.bitwise_and(maskRGBA, colorMat, maskRGBA);
+            
+            // Add to combined mask
+            cv.add(combinedMask, maskRGBA, combinedMask);
+            
+            // Clean up
+            scaledMask.delete();
+            maskTranslated.delete();
             maskRGBA.delete();
             colorMat.delete();
             

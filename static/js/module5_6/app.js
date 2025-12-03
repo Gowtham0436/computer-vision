@@ -35,6 +35,7 @@ function initializeUI() {
     const trackingMode = document.getElementById('trackingMode');
     const sam2File = document.getElementById('sam2File');
     const loadSam2Btn = document.getElementById('loadSam2Btn');
+    const captureFrameBtn = document.getElementById('captureFrameBtn');
     const sam2Controls = document.getElementById('sam2Controls');
     
     startBtn.addEventListener('click', startCamera);
@@ -42,6 +43,9 @@ function initializeUI() {
     selectRegionBtn.addEventListener('click', toggleRegionSelection);
     trackingMode.addEventListener('change', onModeChange);
     loadSam2Btn.addEventListener('click', loadSAM2File);
+    if (captureFrameBtn) {
+        captureFrameBtn.addEventListener('click', captureFrameAndCreateNPZ);
+    }
     
     // Canvas click handler for region selection
     canvas.addEventListener('mousedown', onMouseDown);
@@ -217,14 +221,105 @@ async function loadSAM2File() {
             updateStatus('Loading SAM2 file...');
             await tracker.loadSAM2Data(e.target.result);
             
+            // Note: For manually loaded NPZ files, we don't have the original template
+            // The tracking will use the mask position (static overlay)
+            // To enable dynamic tracking, use "Capture Frame & Create NPZ" button
+            
             const maskCount = tracker.sam2Masks ? tracker.sam2Masks.length : 0;
-            updateStatus(`SAM2 file loaded: ${maskCount} mask(s) ready`);
+            updateStatus(`SAM2 file loaded: ${maskCount} mask(s) ready (static tracking - use "Capture Frame" for dynamic tracking)`);
         } catch (err) {
             console.error('Error loading SAM2 file:', err);
             updateStatus('Error loading SAM2 file: ' + err.message);
         }
     };
     reader.readAsArrayBuffer(file);
+}
+
+async function captureFrameAndCreateNPZ() {
+    if (!video || !video.videoWidth) {
+        alert('Please start the camera first');
+        return;
+    }
+    
+    try {
+        updateStatus('Capturing frame and creating NPZ...');
+        
+        // Capture current frame from canvas
+        const imageData = canvas.toDataURL('image/jpeg', 0.9);
+        const base64Data = imageData.split(',')[1];
+        
+        // Send to backend to create NPZ
+        const response = await fetch('/module5_6/api/create_sam2_npz', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ image: base64Data })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            // Convert base64 NPZ to blob
+            const npzData = Uint8Array.from(atob(result.npz_file), c => c.charCodeAt(0));
+            
+            // Capture the current frame as template for tracking
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const templateMat = cv.matFromImageData(imageData);
+            
+            // Load the NPZ directly into tracker
+            await tracker.loadSAM2Data(npzData.buffer);
+            
+            // Store the template image for template matching
+            if (tracker.sam2Masks && tracker.sam2Masks.length > 0) {
+                const mask = tracker.sam2Masks[0];
+                const rect = cv.boundingRect(mask);
+                
+                // Scale rect to match captured frame size
+                const scaleX = templateMat.cols / mask.cols;
+                const scaleY = templateMat.rows / mask.rows;
+                
+                const scaledRect = new cv.Rect(
+                    Math.round(rect.x * scaleX),
+                    Math.round(rect.y * scaleY),
+                    Math.round(rect.width * scaleX),
+                    Math.round(rect.height * scaleY)
+                );
+                
+                tracker.sam2TemplateRect = scaledRect;
+                
+                // Extract template region from captured frame
+                const x = Math.max(0, scaledRect.x);
+                const y = Math.max(0, scaledRect.y);
+                const w = Math.min(scaledRect.width, templateMat.cols - x);
+                const h = Math.min(scaledRect.height, templateMat.rows - y);
+                
+                if (w > 0 && h > 0) {
+                    tracker.sam2Template = templateMat.roi(new cv.Rect(x, y, w, h));
+                    console.log('Template stored for SAM2 tracking:', w, 'x', h);
+                }
+            }
+            
+            templateMat.delete();
+            
+            const maskCount = tracker.sam2Masks ? tracker.sam2Masks.length : 0;
+            updateStatus(`✓ NPZ created and loaded: ${maskCount} mask(s) ready for tracking`);
+            
+            // Optionally download the file
+            const blob = new Blob([npzData], { type: 'application/zip' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'sam2_captured_frame.npz';
+            a.click();
+            URL.revokeObjectURL(url);
+        } else {
+            alert('Error: ' + (result.error || 'Failed to create NPZ'));
+            updateStatus('Error: ' + (result.error || 'Failed to create NPZ'));
+        }
+    } catch (err) {
+        console.error('Error creating NPZ:', err);
+        updateStatus('Error: ' + err.message);
+        alert('Error creating NPZ: ' + err.message);
+    }
 }
 
 function processVideo() {

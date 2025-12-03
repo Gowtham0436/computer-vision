@@ -974,13 +974,13 @@ def segment_with_aruco_handler(image_data, use_corners=True):
     # Apply mask to original image
     segmented = image.copy()
     segmented[mask == 0] = [0, 0, 0]  # Black background
-    
+        
     # Create overlay (matching Assignment3 blending: 0.65 original + 0.35 green fill)
     fill_rgb = np.zeros((image.shape[0], image.shape[1], 3), dtype=np.uint8)
     fill_rgb[mask > 0] = [0, 255, 0]  # Green fill (BGR)
     result_overlay = cv2.addWeighted(image, 0.65, fill_rgb, 0.35, 0)
     cv2.drawContours(result_overlay, [ordered_contour], -1, (0, 255, 0), 2, cv2.LINE_AA)
-    
+        
     # Get boundary points (from ordered contour, not hull)
     boundary_points = ordered_contour.reshape(-1, 2).tolist()
     

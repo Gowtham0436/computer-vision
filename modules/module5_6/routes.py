@@ -6,7 +6,8 @@ Routes and blueprint definition
 from flask import Blueprint, render_template, request, jsonify
 from core.decorators import login_required
 from .handlers import (
-    compute_motion_estimate_handler
+    compute_motion_estimate_handler,
+    create_sam2_npz_from_frame
 )
 
 # Create blueprint
@@ -46,6 +47,17 @@ def api_compute_motion():
             image1_data=data.get('image1'),
             image2_data=data.get('image2')
         )
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@module5_6_bp.route('/api/create_sam2_npz', methods=['POST'])
+@login_required
+def api_create_sam2_npz():
+    """API endpoint to create SAM2 NPZ file from captured frame"""
+    try:
+        data = request.json
+        result = create_sam2_npz_from_frame(data.get('image'))
         return jsonify(result)
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
