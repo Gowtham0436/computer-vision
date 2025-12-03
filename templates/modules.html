@@ -123,12 +123,12 @@
             <p style="font-size: 0.95em; margin-top: 15px;">Panorama Stitching & SIFT Feature Extraction from Scratch</p>
         </div>
 
-        <!-- Module 5 - Active -->
-        <div class="module-card" onclick="goToModule(5)">
+        <!-- Module 5-6 - Active -->
+        <div class="module-card" onclick="goToModule5_6()">
             <div class="module-icon"></div>
-            <h2>Module 5</h2>
-            <p>Motion Tracking & Object Tracking</p>
-            <p style="font-size: 0.95em; margin-top: 15px;">Motion Equations, Marker/Markerless/SAM2 Tracking</p>
+            <h2>Module 5-6</h2>
+            <p>Motion Tracking & Real-time Object Tracking</p>
+            <p style="font-size: 0.95em; margin-top: 15px;">Motion Equations, Marker/Markerless/SAM2 Tracking with Live Camera</p>
         </div>
 
         <!-- Module 7 - Active -->
@@ -146,6 +146,10 @@
 <script>
 function goToModule(moduleNum) {
     window.location.href = '/module' + moduleNum + '/';
+}
+
+function goToModule5_6() {
+    window.location.href = '/module5_6/';
 }
 
 async function logout() {

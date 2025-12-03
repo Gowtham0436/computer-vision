@@ -18,7 +18,7 @@ def create_app():
     if app.secret_key == 'dev-key-change-in-production' and os.environ.get('FLASK_ENV') == 'production':
         raise ValueError("SECRET_KEY environment variable must be set for production")
     app.config['UPLOAD_FOLDER'] = 'uploads'
-    app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB
+    app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB (increased for image stitching with multiple images)
     app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg'}
     
     # Session configuration - persist across page refreshes and server restarts
@@ -113,19 +113,15 @@ def register_modules(app):
     from modules.module2 import module2_bp
     from modules.module3 import module3_bp
     from modules.module4 import module4_bp
-    from modules.module5 import module5_bp
+    from modules.module5_6 import module5_6_bp
     from modules.module7 import module7_bp
     
     app.register_blueprint(module1_bp)
     app.register_blueprint(module2_bp)
     app.register_blueprint(module3_bp)
     app.register_blueprint(module4_bp)
-    app.register_blueprint(module5_bp)
+    app.register_blueprint(module5_6_bp)
     app.register_blueprint(module7_bp)
-    
-    # Future modules will be registered here:
-    # from modules.module6 import module6_bp
-    # app.register_blueprint(module6_bp)
 
 # Create app instance for Gunicorn
 app = create_app()

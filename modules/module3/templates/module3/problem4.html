@@ -99,15 +99,79 @@
 {% endblock %}
 
 {% block scripts %}
+<!-- OpenCV.js -->
+<script src="https://docs.opencv.org/4.x/opencv.js" 
+  onload="if(window.initModule3Problem4) initModule3Problem4();"
+  onerror="console.error('Failed to load OpenCV.js')"></script>
+
+<!-- Assignment 3 Core Logic -->
+<script src="{{ url_for('static', filename='js/module3/assignment3_core.js') }}"></script>
+
 <script>
+let cvReady = false;
+let srcMat = null;
 let uploadedImage = null;
+let arucoAPI = null;
+
+// Wait for OpenCV to load
+function waitForCV() {
+  return new Promise((resolve) => {
+    if (window.cv && typeof window.cv.Mat === 'function') {
+      cvReady = true;
+      // Initialize ArUco API
+      arucoAPI = getArucoAPI(window.cv);
+      if (arucoAPI) {
+        console.log('✅ ArUco API initialized:', arucoAPI.mode);
+      } else {
+        console.warn('⚠️ ArUco API not available');
+      }
+      resolve();
+      return;
+    }
+    window.cv = window.cv || {};
+    window.cv.onRuntimeInitialized = () => {
+      cvReady = true;
+      // Initialize ArUco API
+      arucoAPI = getArucoAPI(window.cv);
+      if (arucoAPI) {
+        console.log('✅ ArUco API initialized:', arucoAPI.mode);
+      } else {
+        console.warn('⚠️ ArUco API not available');
+      }
+      resolve();
+    };
+    const intv = setInterval(() => {
+      if (window.cv && typeof window.cv.Mat === 'function') {
+        clearInterval(intv);
+        cvReady = true;
+        // Initialize ArUco API
+        arucoAPI = getArucoAPI(window.cv);
+        if (arucoAPI) {
+          console.log('✅ ArUco API initialized:', arucoAPI.mode);
+        } else {
+          console.warn('⚠️ ArUco API not available');
+        }
+        resolve();
+      }
+    }, 50);
+  });
+}
+
+function matToDataURL(mat) {
+  const canvas = document.createElement('canvas');
+  canvas.width = mat.cols;
+  canvas.height = mat.rows;
+  cv.imshow(canvas, mat);
+  return canvas.toDataURL('image/png');
+}
 
 function handleFileUpload(e) {
   const f = e.target.files[0];
   if(!f) return;
   const r = new FileReader();
-  r.onload = (ev) => {
+  r.onload = async (ev) => {
     uploadedImage = ev.target.result;
+    await waitForCV();
     document.getElementById('segmentBtn').disabled = false;
     document.getElementById('resultsSection').style.display = 'none';
   };
@@ -115,37 +179,130 @@ function handleFileUpload(e) {
 }
 
 async function segmentObject() {
+  if (!cvReady) {
+    await waitForCV();
+  }
+  
+  if (!uploadedImage) {
+    alert('Please upload an image first');
+    return;
+  }
+  
+  if (!arucoAPI) {
+    alert('ArUco API not available. Please ensure OpenCV.js includes ArUco module.');
+    return;
+  }
+  
   try {
-    const resp = await fetch('/module3/api/segment_aruco', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ image: uploadedImage })
-    });
-    const res = await resp.json();
-    if(res.success) {
-      document.getElementById('originalImg').src = res.original_image;
-      document.getElementById('markersImg').src = res.markers_detected;
-      document.getElementById('segmentedImg').src = res.segmented;
-      document.getElementById('overlayImg').src = res.segmented_overlay;
-      document.getElementById('markerCount').innerText = res.marker_count;
-      document.getElementById('area').innerText = res.area ? res.area.toFixed(2) : 'N/A';
-      document.getElementById('perimeter').innerText = res.perimeter ? res.perimeter.toFixed(2) : 'N/A';
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      
+      if (srcMat) srcMat.delete();
+      srcMat = cv.imread(canvas);
+      
+      // Use Assignment 3 ArUco segmentation
+      const dictName = 'DICT_6X6_250';
+      const useCorners = true;
+      const showIds = true;
+      const dilate = 2;
+      
+      const { out: segmented, info, markerCount, area, perimeter, points } = segAruco(
+        srcMat, arucoAPI, dictName, useCorners, showIds, dilate
+      );
+      
+      // Create markers-only visualization
+      const markersOnly = new cv.Mat();
+      cv.cvtColor(srcMat, markersOnly, cv.COLOR_RGBA2RGB);
+      
+      // Draw markers
+      const gray = new cv.Mat();
+      cv.cvtColor(srcMat, gray, cv.COLOR_RGBA2GRAY);
+      const corners = new cv.MatVector();
+      const ids = new cv.Mat();
+      try {
+        arucoAPI.detect(gray, arucoAPI.dictionary, corners, ids, arucoAPI.params);
+        if (ids.rows > 0 && arucoAPI.draw) {
+          arucoAPI.draw(markersOnly, corners, ids);
+        }
+      } catch (e) {
+        console.warn('Marker drawing failed:', e);
+      }
+      gray.delete();
+      corners.delete();
+      ids.delete();
+      
+      // Create segmented-only visualization (mask)
+      const segmentedOnly = new cv.Mat();
+      cv.cvtColor(srcMat, segmentedOnly, cv.COLOR_RGBA2RGB);
+      if (points.length >= 3) {
+        const contour = new cv.Mat(points.length, 1, cv.CV_32SC2);
+        for (let i = 0; i < points.length; i++) {
+          const ptr = contour.intPtr(i, 0);
+          ptr[0] = points[i].x;
+          ptr[1] = points[i].y;
+        }
+        const mask = cv.Mat.zeros(srcMat.rows, srcMat.cols, cv.CV_8U);
+        const mv = new cv.MatVector();
+        mv.push_back(contour);
+        cv.fillPoly(mask, mv, new cv.Scalar(255));
+        mv.delete();
+        contour.delete();
+        
+        // Apply mask
+        segmentedOnly.setTo(new cv.Scalar(0, 0, 0), new cv.Mat(segmentedOnly.rows, segmentedOnly.cols, cv.CV_8U, new cv.Scalar(255)).subtract(mask));
+        const fillRGB = new cv.Mat(srcMat.rows, srcMat.cols, cv.CV_8UC3, new cv.Scalar(0, 255, 0, 0));
+        fillRGB.copyTo(segmentedOnly, mask);
+        fillRGB.delete();
+        mask.delete();
+      }
+      
+      document.getElementById('originalImg').src = uploadedImage;
+      document.getElementById('markersImg').src = matToDataURL(markersOnly);
+      document.getElementById('segmentedImg').src = matToDataURL(segmentedOnly);
+      document.getElementById('overlayImg').src = matToDataURL(segmented);
+      document.getElementById('markerCount').innerText = markerCount || 0;
+      document.getElementById('area').innerText = area ? area.toFixed(2) : 'N/A';
+      document.getElementById('perimeter').innerText = perimeter ? perimeter.toFixed(2) : 'N/A';
       document.getElementById('resultsSection').style.display = 'block';
-    } else {
-      alert('Error: ' + (res.error || 'Segmentation failed'));
-    }
+      
+      segmented.delete();
+      markersOnly.delete();
+      segmentedOnly.delete();
+    };
+    img.src = uploadedImage;
   } catch(err) {
     alert('Error: ' + err.message);
+    console.error(err);
   }
 }
 
 function resetAll() {
   if(confirm('Reset everything and start over?')) {
     uploadedImage = null;
+    if (srcMat) {
+      srcMat.delete();
+      srcMat = null;
+    }
     document.getElementById('imageInput').value = '';
     document.getElementById('resultsSection').style.display = 'none';
     document.getElementById('segmentBtn').disabled = true;
   }
+}
+
+function initModule3Problem4() {
+  waitForCV().then(() => {
+    console.log('OpenCV.js ready for Problem 4');
+  });
+}
+
+// Initialize if OpenCV already loaded
+if (window.cv && typeof window.cv.Mat === 'function') {
+  initModule3Problem4();
 }
 </script>
 {% endblock %}

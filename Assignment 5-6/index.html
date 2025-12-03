@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-Time Object Tracker</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Real-Time Object Tracker</h1>
+        
+        <div class="controls">
+            <div class="mode-selector">
+                <label>Tracking Mode:</label>
+                <select id="trackingMode">
+                    <option value="marker">Marker-Based (ArUco/QR)</option>
+                    <option value="markerless">Marker-Less</option>
+                    <option value="sam2">SAM2 Segmentation</option>
+                </select>
+            </div>
+            
+            <div class="button-group">
+                <button id="startBtn">Start Camera</button>
+                <button id="stopBtn" disabled>Stop Camera</button>
+                <button id="selectRegionBtn" disabled>Select Region</button>
+            </div>
+            
+            <div id="sam2Controls" class="sam2-controls" style="display: none;">
+                <label>Load SAM2 NPZ File:</label>
+                <input type="file" id="sam2File" accept=".npz">
+                <button id="loadSam2Btn">Load Segmentation</button>
+            </div>
+        </div>
+        
+        <div class="video-container">
+            <video id="video" autoplay playsinline></video>
+            <canvas id="canvas" willReadFrequently="true"></canvas>
+            <div id="status">Status: Ready</div>
+        </div>
+        
+        <div class="info">
+            <h3>Instructions:</h3>
+            <ul>
+                <li><strong>Marker-Based:</strong> Show an ArUco marker or QR code to the camera</li>
+                <li><strong>Marker-Less:</strong> Click "Select Region" to select an object to track</li>
+                <li><strong>SAM2:</strong> Load a pre-computed NPZ segmentation file</li>
+            </ul>
+        </div>
+    </div>
+    
+    <script src="https://docs.opencv.org/4.8.0/opencv.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="npz_parser.js"></script>
+    <script src="tracker.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
+

@@ -91,15 +91,68 @@
 {% endblock %}
 
 {% block scripts %}
+<!-- OpenCV.js -->
+<script src="https://docs.opencv.org/4.x/opencv.js" 
+  onload="if(window.initModule3Problem3) initModule3Problem3();"
+  onerror="console.error('Failed to load OpenCV.js')"></script>
+
+<!-- Assignment 3 Core Logic -->
+<script src="{{ url_for('static', filename='js/module3/assignment3_core.js') }}?v=1.0" 
+  onload="console.log('assignment3_core.js loaded successfully');"
+  onerror="console.error('Failed to load assignment3_core.js'); alert('Failed to load required JavaScript file. Please refresh the page.');"></script>
+
 <script>
+let cvReady = false;
+let srcMat = null;
 let uploadedImage = null;
+
+// Verify functions are loaded
+window.addEventListener('load', function() {
+  if (typeof boundaryContour === 'undefined') {
+    console.error('boundaryContour function not found after page load');
+  } else {
+    console.log('boundaryContour function is available');
+  }
+});
+
+// Wait for OpenCV to load
+function waitForCV() {
+  return new Promise((resolve) => {
+    if (window.cv && typeof window.cv.Mat === 'function') {
+      cvReady = true;
+      resolve();
+      return;
+    }
+    window.cv = window.cv || {};
+    window.cv.onRuntimeInitialized = () => {
+      cvReady = true;
+      resolve();
+    };
+    const intv = setInterval(() => {
+      if (window.cv && typeof window.cv.Mat === 'function') {
+        clearInterval(intv);
+        cvReady = true;
+        resolve();
+      }
+    }, 50);
+  });
+}
+
+function matToDataURL(mat) {
+  const canvas = document.createElement('canvas');
+  canvas.width = mat.cols;
+  canvas.height = mat.rows;
+  cv.imshow(canvas, mat);
+  return canvas.toDataURL('image/png');
+}
 
 function handleFileUpload(e) {
   const f = e.target.files[0];
   if(!f) return;
   const r = new FileReader();
-  r.onload = (ev) => {
+  r.onload = async (ev) => {
     uploadedImage = ev.target.result;
+    await waitForCV();
     document.getElementById('detectBtn').disabled = false;
     document.getElementById('resultsSection').style.display = 'none';
   };
@@ -107,40 +160,102 @@ function handleFileUpload(e) {
 }
 
 async function detectBoundary() {
+  if (!cvReady) {
+    await waitForCV();
+  }
+  
+  if (!uploadedImage) {
+    alert('Please upload an image first');
+    return;
+  }
+  
+  // Check if boundaryContour function is available
+  if (typeof boundaryContour === 'undefined') {
+    alert('Error: boundaryContour function not loaded. Please refresh the page.');
+    console.error('boundaryContour function is not defined');
+    return;
+  }
+  
   try {
-    const method = document.querySelector('input[name="method"]:checked').value;
-    const resp = await fetch('/module3/api/detect_boundary', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ 
-        image: uploadedImage,
-        method: method
-      })
-    });
-    const res = await resp.json();
-    if(res.success) {
-      document.getElementById('originalImg').src = res.original_image;
-      document.getElementById('boundaryImg').src = res.boundary;
-      document.getElementById('overlayImg').src = res.boundary_overlay;
-      document.getElementById('area').innerText = res.area ? res.area.toFixed(2) : 'N/A';
-      document.getElementById('perimeter').innerText = res.perimeter ? res.perimeter.toFixed(2) : 'N/A';
-      document.getElementById('pointsCount').innerText = res.boundary_points ? res.boundary_points.length : 0;
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      
+      if (srcMat) srcMat.delete();
+      srcMat = cv.imread(canvas);
+      
+      // Use Assignment 3 boundary detection (contour method)
+      const closeK = 5;
+      const minAreaPct = 2;
+      const epsPct = 1.5;
+      const centerR = 40;
+      const edgeAuto = true;
+      
+      const { out: boundary, info, area, perimeter, points } = boundaryContour(
+        srcMat, closeK, minAreaPct, epsPct, centerR, 20, 60, edgeAuto
+      );
+      
+      // Create boundary-only visualization
+      const boundaryOnly = new cv.Mat();
+      cv.cvtColor(srcMat, boundaryOnly, cv.COLOR_RGBA2RGB);
+      if (points.length > 0) {
+        const contour = new cv.Mat(points.length, 1, cv.CV_32SC2);
+        for (let i = 0; i < points.length; i++) {
+          const ptr = contour.intPtr(i, 0);
+          ptr[0] = points[i].x;
+          ptr[1] = points[i].y;
+        }
+        const mv = new cv.MatVector();
+        mv.push_back(contour);
+        cv.polylines(boundaryOnly, mv, true, new cv.Scalar(0, 255, 0, 255), 3, cv.LINE_AA);
+        mv.delete();
+        contour.delete();
+      }
+      
+      document.getElementById('originalImg').src = uploadedImage;
+      document.getElementById('boundaryImg').src = matToDataURL(boundaryOnly);
+      document.getElementById('overlayImg').src = matToDataURL(boundary);
+      document.getElementById('area').innerText = area ? area.toFixed(2) : 'N/A';
+      document.getElementById('perimeter').innerText = perimeter ? perimeter.toFixed(2) : 'N/A';
+      document.getElementById('pointsCount').innerText = points ? points.length : 0;
       document.getElementById('resultsSection').style.display = 'block';
-    } else {
-      alert('Error: ' + (res.error || 'Boundary detection failed'));
-    }
+      
+      boundary.delete();
+      boundaryOnly.delete();
+    };
+    img.src = uploadedImage;
   } catch(err) {
     alert('Error: ' + err.message);
+    console.error(err);
   }
 }
 
 function resetAll() {
   if(confirm('Reset everything and start over?')) {
     uploadedImage = null;
+    if (srcMat) {
+      srcMat.delete();
+      srcMat = null;
+    }
     document.getElementById('imageInput').value = '';
     document.getElementById('resultsSection').style.display = 'none';
     document.getElementById('detectBtn').disabled = true;
   }
+}
+
+function initModule3Problem3() {
+  waitForCV().then(() => {
+    console.log('OpenCV.js ready for Problem 3');
+  });
+}
+
+// Initialize if OpenCV already loaded
+if (window.cv && typeof window.cv.Mat === 'function') {
+  initModule3Problem3();
 }
 </script>
 {% endblock %}

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
-{% block title %}Module 4 - Home{% endblock %}
-{% block header %}Module 4 - Image Stitching & SIFT Features{% endblock %}
+{% block title %}Module 5-6 - Home{% endblock %}
+{% block header %}Module 5-6 - Motion Tracking & Real-time Object Tracking{% endblock %}
 {% block subheader %}Select a Problem{% endblock %}
 
 {% block styles %}
@@ -28,41 +28,40 @@
 {% block content %}
 <div class="main-container">
   <div class="breadcrumb">
-    <a href="/modules">← Back to All Modules</a> / Module 4
+    <a href="/modules">← Back to All Modules</a> / Module 5-6
   </div>
 
   <div class="module-info">
-    <h3>About Module 4</h3>
-    <p>Combined image stitching and SIFT feature extraction. Upload images to automatically stitch them into a panorama and extract SIFT features from consecutive image pairs. Compare with OpenCV implementations and mobile panorama features.</p>
+    <h3>About Module 5-6</h3>
+    <p>Combined module for motion tracking equations derivation and real-time object tracking implementations. Includes marker-based tracking (ArUco/QR), markerless tracking, and SAM2 segmentation-based tracking with live camera feed.</p>
   </div>
 
   <h2 style="text-align: center; margin-bottom: 30px;">Select a Problem</h2>
 
   <div class="problems-grid">
     <div class="problem-card" onclick="goToProblem(1)">
-      <div class="problem-icon">🖼️</div>
+      <div class="problem-icon">📐</div>
       <h3>Problem 1</h3>
-      <div class="method">Image Stitching + SIFT</div>
-      <p>Stitch multiple images to create panoramas and automatically extract SIFT features from consecutive pairs.</p>
+      <div class="method">Theoretical Derivations</div>
+      <p>Derive motion tracking equations and Lucas-Kanade algorithm for affine motion.</p>
       <ul>
-        <li>Upload 4+ images (landscape) or 8+ (portrait)</li>
-        <li>OpenCV Stitcher for panorama creation</li>
-        <li>Automatic SIFT feature extraction</li>
-        <li>Feature matching with RANSAC</li>
-        <li>Compare with mobile panorama (optional)</li>
+        <li>Motion tracking equation derivation</li>
+        <li>Motion function estimates</li>
+        <li>Lucas-Kanade for affine motion</li>
+        <li>Mathematical formulations</li>
       </ul>
     </div>
 
     <div class="problem-card" onclick="goToProblem(2)">
-      <div class="problem-icon">🔑</div>
+      <div class="problem-icon">🎯</div>
       <h3>Problem 2</h3>
-      <div class="method">SIFT Features (Standalone)</div>
-      <p>Extract SIFT features from scratch for individual images or pairs. Includes RANSAC optimization.</p>
+      <div class="method">Real-time Tracking</div>
+      <p>Three implementations: marker-based, markerless, and SAM2 segmentation tracking with live camera.</p>
       <ul>
-        <li>Custom SIFT implementation</li>
-        <li>RANSAC optimization</li>
-        <li>Compare with OpenCV SIFT</li>
-        <li>Feature matching visualization</li>
+        <li>ArUco/QR marker tracking</li>
+        <li>Markerless object tracking</li>
+        <li>SAM2 segmentation tracking</li>
+        <li>Real-time visualization</li>
       </ul>
     </div>
   </div>
@@ -72,7 +71,7 @@
 {% block scripts %}
 <script>
 function goToProblem(problemNum) {
-  window.location.href = '/module4/problem' + problemNum;
+  window.location.href = '/module5_6/problem' + problemNum;
 }
 </script>
 {% endblock %}

@@ -29,22 +29,26 @@
   .results-section { background: #e8f5e9; padding: 20px; border-radius: 10px; margin-top: 20px; }
   .image-card { background: white; padding: 15px; border-radius: 10px; box-shadow: 0 3px 10px rgba(0,0,0,0.1); margin: 15px 0; }
   .image-card h4 { margin: 0 0 10px 0; color: #667eea; }
+  #siftResultsSection { margin-top: 30px; }
+  #siftResultsSection table { width: 100%; border-collapse: collapse; margin: 15px 0; }
+  #siftResultsSection th { background: #667eea; color: white; padding: 10px; text-align: left; border: 1px solid #ddd; }
+  #siftResultsSection td { padding: 8px; border: 1px solid #ddd; }
+  #siftResultsSection tr:nth-child(even) { background: #f9f9f9; }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="main-container">
   <div style="margin-bottom: 20px;">
-    <a href="/module4" class="btn">← Back to Module 4</a>
-    <a href="/modules" class="btn">All Modules</a>
+    <a href="/modules" class="btn">← Back to All Modules</a>
   </div>
 
-  <h2>Problem 1: Image Stitching</h2>
+  <h2>Image Stitching with SIFT Feature Extraction</h2>
   <ol style="line-height: 1.8; margin-bottom: 20px;">
     <li>Upload <strong>at least 4 images</strong> (landscape) or <strong>8 images</strong> (portrait)</li>
     <li>Images should be <strong>consecutive views</strong> with overlapping regions</li>
-    <li>Click <strong>Stitch Images</strong> to create panorama</li>
-    <li>Compare custom stitching with OpenCV Stitcher and mobile panorama</li>
+    <li>Click <strong>Stitch Images</strong> to create panorama and automatically extract SIFT features</li>
+    <li><strong>Optional:</strong> Upload a <strong>mobile panorama</strong> to compare with the stitched result</li>
   </ol>
 
   <div class="info-box">
@@ -65,6 +69,17 @@
       <p>Select multiple images</p>
       <input type="file" id="imageInput" accept="image/*" multiple style="display:none" onchange="handleFileUpload(event)">
     </div>
+    <div class="upload-box" onclick="document.getElementById('referenceInput').click()">
+      <h4>📱 Reference Image (Optional)</h4>
+      <p>Upload mobile panorama for comparison</p>
+      <input type="file" id="referenceInput" accept="image/*" style="display:none" onchange="handleReferenceUpload(event)">
+    </div>
+  </div>
+  
+  <div id="referencePreview" style="display:none; margin: 20px 0; text-align: center;">
+    <h4>Reference Image</h4>
+    <img id="referencePreviewImg" style="max-width: 300px; max-height: 200px; border-radius: 8px; border: 2px solid #667eea;">
+    <button class="btn btn-secondary" onclick="removeReference()" style="margin-top: 10px;">Remove Reference</button>
   </div>
 
   <div id="previewSection" style="display:none;">
@@ -81,22 +96,29 @@
   </div>
 
   <div id="resultsSection" style="display:none;">
-    <h3>Stitching Results</h3>
+    <h3>Stitching & SIFT Results</h3>
     <div class="results-section">
       <div><strong>Images Stitched:</strong> <span id="numImages">0</span></div>
-      <div><strong>OpenCV Method:</strong> <span id="opencvStatus">-</span></div>
-      <div><strong>Custom Method:</strong> <span id="customStatus">-</span></div>
+      <div><strong>Status:</strong> <span id="opencvStatus">-</span></div>
       <div style="margin-top: 10px;"><strong>Note:</strong> <span id="comparisonNote">-</span></div>
     </div>
     
-    <div class="image-card">
-      <h4>Custom Stitching Result</h4>
-      <img id="customStitchedImg" alt="Custom Stitched">
+    <div class="image-card" id="stitchedCard" style="display:none;">
+      <h4>Stitched Panorama</h4>
+      <img id="stitchedImg" alt="Stitched Panorama">
     </div>
     
-    <div class="image-card" id="opencvCard" style="display:none;">
-      <h4>OpenCV Stitcher Result (for comparison)</h4>
-      <img id="opencvStitchedImg" alt="OpenCV Stitched">
+    <div class="image-card" id="referenceCard" style="display:none;">
+      <h4>Mobile Panorama (for comparison)</h4>
+      <img id="referenceImg" alt="Mobile Panorama">
+    </div>
+    
+    <div id="siftResultsSection" style="display:none;">
+      <h3>SIFT Feature Extraction Results</h3>
+      <div class="results-section">
+        <div id="siftStats"></div>
+      </div>
+      <div id="siftMatchesContainer"></div>
     </div>
   </div>
 </div>
@@ -105,6 +127,7 @@
 {% block scripts %}
 <script>
 let uploadedImages = [];
+let referenceImage = null;
 
 function handleFileUpload(e) {
   const files = Array.from(e.target.files);
@@ -121,6 +144,25 @@ function handleFileUpload(e) {
     };
     r.readAsDataURL(file);
   });
+}
+
+function handleReferenceUpload(e) {
+  const file = e.target.files[0];
+  if(!file) return;
+  
+  const r = new FileReader();
+  r.onload = (ev) => {
+    referenceImage = ev.target.result;
+    document.getElementById('referencePreviewImg').src = referenceImage;
+    document.getElementById('referencePreview').style.display = 'block';
+  };
+  r.readAsDataURL(file);
+}
+
+function removeReference() {
+  referenceImage = null;
+  document.getElementById('referenceInput').value = '';
+  document.getElementById('referencePreview').style.display = 'none';
 }
 
 function updatePreview() {
@@ -163,6 +205,12 @@ async function stitchImages() {
   
   try {
     const imageDataArray = uploadedImages.map(img => img.data);
+    const requestData = { images: imageDataArray };
+    
+    // Add reference image if provided
+    if(referenceImage) {
+      requestData.reference_image = referenceImage;
+    }
     
     document.getElementById('stitchBtn').disabled = true;
     document.getElementById('stitchBtn').innerText = 'Stitching...';
@@ -170,7 +218,7 @@ async function stitchImages() {
     const resp = await fetch('/module4/api/stitch_images', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ images: imageDataArray })
+      body: JSON.stringify(requestData)
     });
     
     const res = await resp.json();
@@ -180,16 +228,89 @@ async function stitchImages() {
     if(res.success) {
       document.getElementById('numImages').innerText = res.num_images;
       document.getElementById('opencvStatus').innerText = res.opencv_success ? 'Success' : 'Failed';
-      document.getElementById('customStatus').innerText = 'Completed';
       document.getElementById('comparisonNote').innerText = res.comparison_note;
       
-      document.getElementById('customStitchedImg').src = res.stitched_custom;
-      
-      if(res.opencv_success && res.stitched_opencv) {
-        document.getElementById('opencvStitchedImg').src = res.stitched_opencv;
-        document.getElementById('opencvCard').style.display = 'block';
+      // Show stitched result
+      if(res.stitched_opencv) {
+        document.getElementById('stitchedImg').src = res.stitched_opencv;
+        document.getElementById('stitchedCard').style.display = 'block';
       } else {
-        document.getElementById('opencvCard').style.display = 'none';
+        document.getElementById('stitchedCard').style.display = 'none';
+      }
+      
+      // Show mobile panorama separately if provided
+      if(res.has_reference && res.reference_image) {
+        document.getElementById('referenceImg').src = res.reference_image;
+        document.getElementById('referenceCard').style.display = 'block';
+      } else {
+        document.getElementById('referenceCard').style.display = 'none';
+        // Silently skip if no reference was provided or if it failed
+        if(referenceImage && !res.has_reference) {
+          console.warn('Reference image provided but failed to process: ' + (res.reference_error || 'Unknown error'));
+        }
+      }
+      
+      // Display SIFT results
+      if(res.sift_results && res.sift_results.length > 0) {
+        const statsDiv = document.getElementById('siftStats');
+        const matchesContainer = document.getElementById('siftMatchesContainer');
+        
+        // Build statistics
+        let statsHTML = '<h4>SIFT Feature Statistics:</h4><table style="width:100%; border-collapse: collapse; margin: 10px 0;">';
+        statsHTML += '<tr style="background: #f0f0f0;"><th style="padding: 8px; border: 1px solid #ddd;">Image Pair</th>';
+        statsHTML += '<th style="padding: 8px; border: 1px solid #ddd;">Custom Keypoints (A/B)</th>';
+        statsHTML += '<th style="padding: 8px; border: 1px solid #ddd;">Custom Matches</th>';
+        statsHTML += '<th style="padding: 8px; border: 1px solid #ddd;">Custom Inliers</th>';
+        statsHTML += '<th style="padding: 8px; border: 1px solid #ddd;">OpenCV Inliers</th>';
+        statsHTML += '<th style="padding: 8px; border: 1px solid #ddd;">Homography</th></tr>';
+        
+        res.sift_results.forEach((sift, idx) => {
+          if(sift.error) {
+            statsHTML += `<tr><td style="padding: 8px; border: 1px solid #ddd;">${sift.pair}</td>`;
+            statsHTML += `<td colspan="5" style="padding: 8px; border: 1px solid #ddd; color: red;">Error: ${sift.error}</td></tr>`;
+          } else {
+            statsHTML += `<tr><td style="padding: 8px; border: 1px solid #ddd;">${sift.pair}</td>`;
+            statsHTML += `<td style="padding: 8px; border: 1px solid #ddd;">${sift.custom_keypoints_a} / ${sift.custom_keypoints_b}</td>`;
+            statsHTML += `<td style="padding: 8px; border: 1px solid #ddd;">${sift.custom_matches}</td>`;
+            statsHTML += `<td style="padding: 8px; border: 1px solid #ddd;">${sift.custom_inliers}</td>`;
+            statsHTML += `<td style="padding: 8px; border: 1px solid #ddd;">${sift.opencv_inliers}</td>`;
+            statsHTML += `<td style="padding: 8px; border: 1px solid #ddd;">${sift.homography_found ? '✓' : '✗'}</td></tr>`;
+          }
+        });
+        statsHTML += '</table>';
+        statsDiv.innerHTML = statsHTML;
+        
+        // Display match visualizations
+        matchesContainer.innerHTML = '';
+        res.sift_results.forEach((sift, idx) => {
+          if(!sift.error) {
+            // Custom SIFT matches
+            if(res.sift_matches_images && res.sift_matches_images[idx]) {
+              const matchDiv = document.createElement('div');
+              matchDiv.className = 'image-card';
+              matchDiv.innerHTML = `
+                <h4>Custom SIFT Matches: Images ${sift.pair}</h4>
+                <img src="${res.sift_matches_images[idx]}" alt="Custom SIFT Matches ${sift.pair}" style="max-width: 100%;">
+              `;
+              matchesContainer.appendChild(matchDiv);
+            }
+            
+            // OpenCV SIFT matches for comparison
+            if(res.sift_opencv_matches_images && res.sift_opencv_matches_images[idx]) {
+              const opencvDiv = document.createElement('div');
+              opencvDiv.className = 'image-card';
+              opencvDiv.innerHTML = `
+                <h4>OpenCV SIFT Matches: Images ${sift.pair}</h4>
+                <img src="${res.sift_opencv_matches_images[idx]}" alt="OpenCV SIFT Matches ${sift.pair}" style="max-width: 100%;">
+              `;
+              matchesContainer.appendChild(opencvDiv);
+            }
+          }
+        });
+        
+        document.getElementById('siftResultsSection').style.display = 'block';
+      } else {
+        document.getElementById('siftResultsSection').style.display = 'none';
       }
       
       document.getElementById('resultsSection').style.display = 'block';
@@ -206,8 +327,11 @@ async function stitchImages() {
 function resetAll() {
   if(confirm('Reset everything and start over?')) {
     uploadedImages = [];
+    referenceImage = null;
     document.getElementById('imageInput').value = '';
+    document.getElementById('referenceInput').value = '';
     document.getElementById('previewSection').style.display = 'none';
+    document.getElementById('referencePreview').style.display = 'none';
     document.getElementById('resultsSection').style.display = 'none';
     document.getElementById('stitchBtn').disabled = true;
   }

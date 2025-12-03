@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% block title %}Module 5-6 - Problem 1{% endblock %}
+{% block header %}Module 5-6 - Problem 1{% endblock %}
+{% block subheader %}Motion Tracking Equations & Lucas-Kanade Derivation{% endblock %}
+
+{% block styles %}
+<style>
+  .main-container { max-width: 1200px; margin: 0 auto; }
+  .derivation-section { background: white; padding: 25px; border-radius: 10px; margin: 20px 0; box-shadow: 0 3px 10px rgba(0,0,0,0.1); }
+  .derivation-section h3 { color: #667eea; margin-bottom: 15px; }
+  .math-formula { background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 15px 0; font-family: 'Courier New', monospace; border-left: 4px solid #667eea; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="main-container">
+  <div style="margin-bottom: 20px;">
+    <a href="/module5_6" class="btn">← Back to Module 5-6</a>
+    <a href="/modules" class="btn">All Modules</a>
+  </div>
+
+  <h2>Problem 1: Motion Tracking Equations & Lucas-Kanade Derivation</h2>
+  <p style="color: #666; margin-bottom: 30px;">
+    This problem requires theoretical derivations. The derivations are shown below.
+  </p>
+
+  <!-- Part (a): Motion Tracking Equation -->
+  <div class="derivation-section">
+    <h3>(a) Motion Tracking Equation Derivation</h3>
+    <p><strong>Fundamental Principle:</strong> Brightness Constancy Assumption</p>
+    <p>We assume that the intensity of a pixel remains constant as it moves from one frame to the next:</p>
+    
+    <div class="math-formula">
+      I(x, y, t) = I(x + u, y + v, t + 1)
+    </div>
+    
+    <p>where:</p>
+    <ul style="line-height: 1.8;">
+      <li>I(x, y, t) is the intensity at position (x, y) at time t</li>
+      <li>(u, v) is the motion vector (displacement in x and y directions)</li>
+      <li>t and t+1 represent consecutive frames</li>
+    </ul>
+    
+    <p><strong>Derivation:</strong></p>
+    <p>Expanding I(x + u, y + v, t + 1) using Taylor series:</p>
+    
+    <div class="math-formula">
+      I(x + u, y + v, t + 1) ≈ I(x, y, t) + u·∂I/∂x + v·∂I/∂y + ∂I/∂t
+    </div>
+    
+    <p>Substituting the brightness constancy assumption:</p>
+    
+    <div class="math-formula">
+      I(x, y, t) = I(x, y, t) + u·∂I/∂x + v·∂I/∂y + ∂I/∂t
+    </div>
+    
+    <p>Simplifying:</p>
+    
+    <div class="math-formula">
+      u·Iₓ + v·Iᵧ + Iₜ = 0
+    </div>
+    
+    <p>where:</p>
+    <ul style="line-height: 1.8;">
+      <li>Iₓ = ∂I/∂x (spatial gradient in x-direction)</li>
+      <li>Iᵧ = ∂I/∂y (spatial gradient in y-direction)</li>
+      <li>Iₜ = ∂I/∂t (temporal gradient)</li>
+    </ul>
+    
+    <p>This is the <strong>Optical Flow Constraint Equation</strong>.</p>
+  </div>
+
+  <!-- Part (b): Lucas-Kanade for Affine Motion -->
+  <div class="derivation-section">
+    <h3>(b) Lucas-Kanade Algorithm for Affine Motion</h3>
+    <p><strong>Affine Motion Model:</strong></p>
+    
+    <div class="math-formula">
+      u(x, y) = a₁x + b₁y + c₁<br>
+      v(x, y) = a₂x + b₂y + c₂
+    </div>
+    
+    <p>where a₁, b₁, c₁, a₂, b₂, c₂ are the affine parameters.</p>
+    
+    <p><strong>Derivation:</strong></p>
+    <p>Substituting the affine motion model into the optical flow constraint:</p>
+    
+    <div class="math-formula">
+      (a₁x + b₁y + c₁)·Iₓ + (a₂x + b₂y + c₂)·Iᵧ + Iₜ = 0
+    </div>
+    
+    <p>Rearranging:</p>
+    
+    <div class="math-formula">
+      a₁x·Iₓ + b₁y·Iₓ + c₁·Iₓ + a₂x·Iᵧ + b₂y·Iᵧ + c₂·Iᵧ + Iₜ = 0
+    </div>
+    
+    <p>For a local window W around point (x, y), we minimize the error:</p>
+    
+    <div class="math-formula">
+      E = Σ<sub>(x,y)∈W</sub> [a₁x·Iₓ + b₁y·Iₓ + c₁·Iₓ + a₂x·Iᵧ + b₂y·Iᵧ + c₂·Iᵧ + Iₜ]²
+    </div>
+    
+    <p>Taking partial derivatives with respect to each parameter and setting to zero:</p>
+    
+    <div class="math-formula">
+      ∂E/∂a₁ = 0, ∂E/∂b₁ = 0, ∂E/∂c₁ = 0<br>
+      ∂E/∂a₂ = 0, ∂E/∂b₂ = 0, ∂E/∂c₂ = 0
+    </div>
+    
+    <p>This gives us a system of 6 linear equations:</p>
+    
+    <div class="math-formula">
+      [Σ x²Iₓ²    Σ xyIₓ²    Σ xIₓ²    Σ x²IₓIᵧ   Σ xyIₓIᵧ   Σ xIₓIᵧ  ] [a₁]   [Σ -xIₓIₜ]<br>
+      [Σ xyIₓ²    Σ y²Iₓ²    Σ yIₓ²    Σ xyIₓIᵧ   Σ y²IₓIᵧ   Σ yIₓIᵧ  ] [b₁]   [Σ -yIₓIₜ]<br>
+      [Σ xIₓ²     Σ yIₓ²     Σ Iₓ²     Σ xIₓIᵧ    Σ yIₓIᵧ    Σ IₓIᵧ   ] [c₁] = [Σ -IₓIₜ ]<br>
+      [Σ x²IₓIᵧ   Σ xyIₓIᵧ   Σ xIₓIᵧ   Σ x²Iᵧ²    Σ xyIᵧ²    Σ xIᵧ²   ] [a₂]   [Σ -xIᵧIₜ]<br>
+      [Σ xyIₓIᵧ   Σ y²IₓIᵧ   Σ yIₓIᵧ   Σ xyIᵧ²    Σ y²Iᵧ²    Σ yIᵧ²   ] [b₂]   [Σ -yIᵧIₜ]<br>
+      [Σ xIₓIᵧ    Σ yIₓIᵧ    Σ IₓIᵧ    Σ xIᵧ²     Σ yIᵧ²     Σ Iᵧ²    ] [c₂]   [Σ -IᵧIₜ ]
+    </div>
+    
+    <p>Solving this 6×6 linear system gives us the affine motion parameters.</p>
+    
+    <p><strong>Algorithm Steps:</strong></p>
+    <ol style="line-height: 1.8;">
+      <li>Compute spatial gradients Iₓ and Iᵧ using Sobel or similar</li>
+      <li>Compute temporal gradient Iₜ = I(x, y, t+1) - I(x, y, t)</li>
+      <li>For each window W, build the 6×6 matrix and solve for affine parameters</li>
+      <li>Use the parameters to compute motion vectors u(x, y) and v(x, y)</li>
+    </ol>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% endblock %}
+

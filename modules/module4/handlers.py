@@ -1,27 +1,112 @@
 """
 Module 4: Business logic handlers
 Assignment 4 Implementation:
-1. Image Stitching (from scratch) - compare with mobile panorama
-2. SIFT Feature Extraction (from scratch) with RANSAC - compare with OpenCV SIFT
+1. Image Stitching (using task1_stitch.py logic)
+2. SIFT Feature Extraction (using task2_sift.py logic) with RANSAC
 """
 
-import os
 import cv2
 import numpy as np
+import math
+import random
+import dataclasses
+from typing import List, Tuple, Sequence, Iterable
 from core.utils import decode_base64_image, encode_image_to_base64
 
-def stitch_images_handler(images_data):
-    """
-    Problem 1: Image Stitching
+# ---------------------------------------------------------------------------
+# Data structures for SIFT
+# ---------------------------------------------------------------------------
+
+@dataclasses.dataclass
+class Keypoint:
+    """Minimal representation of a SIFT keypoint."""
+    x: float
+    y: float
+    octave: int
+    layer: int
+    sigma: float
+    orientation: float
+
+@dataclasses.dataclass
+class Match:
+    idx_a: int
+    idx_b: int
+    distance: float
+
+# ---------------------------------------------------------------------------
+# Image Stitching (from task1_stitch.py)
+# ---------------------------------------------------------------------------
+
+def create_stitcher() -> cv2.Stitcher:
+    """Create OpenCV Stitcher instance."""
+    mode = cv2.Stitcher_PANORAMA
+    if hasattr(cv2, "Stitcher_create"):
+        stitcher = cv2.Stitcher_create(mode)
+    elif hasattr(cv2, "createStitcher"):
+        stitcher = cv2.createStitcher(mode)
+    else:
+        raise RuntimeError("This version of OpenCV does not expose the Stitcher API.")
+    return stitcher
+
+def stitch_images_opencv(
+    images: Sequence[np.ndarray],
+) -> Tuple[bool, np.ndarray | None]:
+    """Stitch images using OpenCV Stitcher API."""
+    if len(images) < 2:
+        return False, None
     
-    Stitches multiple images together to create a panorama.
-    Works with at least 4 images (landscape) or 8 images (portrait).
+    try:
+        stitcher = create_stitcher()
+        status, panorama = stitcher.stitch(images)
+        if status == cv2.Stitcher_OK:
+            return True, panorama
+        else:
+            return False, None
+    except Exception as e:
+        print(f"Stitching error: {e}")
+        return False, None
+
+def make_side_by_side_comparison(
+    stitched: np.ndarray,
+    reference: np.ndarray,
+) -> np.ndarray:
+    """
+    Create side-by-side comparison of stitched panorama and reference image.
+    From task1_stitch.py make_side_by_side function.
+    """
+    # Normalize heights for a fair comparison
+    target_height = min(stitched.shape[0], reference.shape[0])
+    
+    def resize_to_height(image: np.ndarray) -> np.ndarray:
+        scale = target_height / image.shape[0]
+        if scale == 1.0:
+            return image
+        new_size = (int(image.shape[1] * scale), target_height)
+        return cv2.resize(image, new_size, interpolation=cv2.INTER_AREA)
+    
+    stitched_resized = resize_to_height(stitched)
+    ref_resized = resize_to_height(reference)
+    
+    padding = 20
+    pad = np.full((target_height, padding, 3), 255, dtype=np.uint8)
+    comparison = np.hstack([ref_resized, pad, stitched_resized])
+    
+    return comparison
+
+def stitch_images_with_reference_handler(images_data, reference_image_data=None):
+    """
+    Combined Image Stitching and SIFT Feature Extraction
+    
+    Stitches multiple images together to create a panorama using OpenCV Stitcher,
+    and automatically performs SIFT feature extraction and matching between consecutive images.
+    Optionally compares with a reference image (e.g., from mobile phone).
     
     Args:
         images_data: List of base64 encoded images
+        reference_image_data: Optional base64 encoded reference panorama image
         
     Returns:
-        Dictionary with stitched image and comparison info
+        Dictionary with stitched image, SIFT results, reference comparison, and info
     """
     if not images_data or len(images_data) < 2:
         return {'success': False, 'error': 'Need at least 2 images for stitching'}
@@ -37,438 +122,717 @@ def stitch_images_handler(images_data):
     if len(images) < 2:
         return {'success': False, 'error': 'Need at least 2 valid images'}
     
-    # Convert to grayscale for feature detection
-    gray_images = [cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if len(img.shape) == 3 else img for img in images]
-    
-    # Use OpenCV's built-in stitcher for comparison
-    # But we'll implement our own stitching procedure
-    try:
-        # Method 1: OpenCV Stitcher (for comparison)
-        stitcher = cv2.Stitcher.create() if hasattr(cv2, 'Stitcher_create') else cv2.createStitcher()
-        status_opencv, stitched_opencv = stitcher.stitch(images)
-        
-        if status_opencv == cv2.Stitcher_OK:
-            opencv_success = True
-            stitched_opencv_b64 = encode_image_to_base64(stitched_opencv)
+    # Resize images if too large (to avoid memory issues)
+    max_width = 1800
+    resize_width = 960  # For SIFT processing
+    resized_images = []
+    resized_for_sift = []
+    for img in images:
+        # Resize for stitching
+        if img.shape[1] > max_width:
+            scale = max_width / img.shape[1]
+            new_size = (max_width, int(img.shape[0] * scale))
+            resized_img = cv2.resize(img, new_size, interpolation=cv2.INTER_AREA)
         else:
-            opencv_success = False
-            stitched_opencv_b64 = None
-    except:
-        opencv_success = False
-        stitched_opencv_b64 = None
-    
-    # Method 2: Custom stitching procedure (from scratch)
-    # Stitch images sequentially using feature matching and homography
-    
-    # Start with first image as base
-    base_image = images[0].copy()
-    base_gray = gray_images[0]
-    translation_x, translation_y = 0, 0  # Track cumulative translation
-    
-    for i in range(len(images) - 1):
-        img1_gray = base_gray
-        img2_gray = gray_images[i + 1]
-        img1_color = base_image
-        img2_color = images[i + 1]
+            resized_img = img.copy()
+        resized_images.append(resized_img)
         
-        # Use SIFT for better feature matching (or ORB as fallback)
-        try:
-            sift = cv2.SIFT_create(nfeatures=5000)
-            kp1, des1 = sift.detectAndCompute(img1_gray, None)
-            kp2, des2 = sift.detectAndCompute(img2_gray, None)
-        except:
-            # Fallback to ORB
-            orb = cv2.ORB_create(nfeatures=5000)
-            kp1, des1 = orb.detectAndCompute(img1_gray, None)
-            kp2, des2 = orb.detectAndCompute(img2_gray, None)
-        
-        if des1 is None or des2 is None or len(kp1) < 10 or len(kp2) < 10:
-            continue
-        
-        # Match features
-        try:
-            # Try FLANN for SIFT
-            FLANN_INDEX_KDTREE = 1
-            index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=5)
-            search_params = dict(checks=50)
-            flann = cv2.FlannBasedMatcher(index_params, search_params)
-            matches = flann.knnMatch(des1, des2, k=2)
-            norm_type = cv2.NORM_L2
-        except:
-            # Use BFMatcher for ORB
-            bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=False)
-            matches = bf.knnMatch(des1, des2, k=2)
-            norm_type = cv2.NORM_HAMMING
-        
-        # Apply ratio test (Lowe's ratio test)
-        good_matches = []
-        for match_pair in matches:
-            if len(match_pair) == 2:
-                m, n = match_pair
-                ratio = 0.7 if norm_type == cv2.NORM_L2 else 0.75
-                if m.distance < ratio * n.distance:
-                    good_matches.append(m)
-        
-        if len(good_matches) < 10:
-            continue
-        
-        # Extract matched points
-        src_pts = np.float32([kp1[m.queryIdx].pt for m in good_matches]).reshape(-1, 1, 2)
-        dst_pts = np.float32([kp2[m.trainIdx].pt for m in good_matches]).reshape(-1, 1, 2)
-        
-        # Find homography using RANSAC
-        homography, mask = cv2.findHomography(dst_pts, src_pts, cv2.RANSAC, 5.0)
-        
-        if homography is None:
-            continue
-        
-        # Get dimensions
-        h1, w1 = base_image.shape[:2]
-        h2, w2 = img2_color.shape[:2]
-        
-        # Get corners of second image
-        corners = np.float32([[0, 0], [0, h2], [w2, h2], [w2, 0]]).reshape(-1, 1, 2)
-        transformed_corners = cv2.perspectiveTransform(corners, homography)
-        
-        # Adjust for current translation
-        transformed_corners[:, :, 0] += translation_x
-        transformed_corners[:, :, 1] += translation_y
-        
-        # Calculate bounding box
-        all_corners = np.concatenate([
-            np.float32([[translation_x, translation_y], 
-                       [translation_x, translation_y + h1], 
-                       [translation_x + w1, translation_y + h1], 
-                       [translation_x + w1, translation_y]]).reshape(-1, 1, 2),
-            transformed_corners
-        ], axis=0)
-        
-        [x_min, y_min] = np.int32(all_corners.min(axis=0).ravel() - 0.5)
-        [x_max, y_max] = np.int32(all_corners.max(axis=0).ravel() + 0.5)
-        
-        # Calculate new translation
-        new_translation_x = -x_min
-        new_translation_y = -y_min
-        
-        # Update homography with translation
-        H_translation = np.array([[1, 0, new_translation_x], 
-                                 [0, 1, new_translation_y], 
-                                 [0, 0, 1]])
-        homography = H_translation @ homography
-        
-        # Calculate output size
-        output_width = x_max - x_min
-        output_height = y_max - y_min
-        
-        # Warp second image
-        warped_img2 = cv2.warpPerspective(img2_color, homography, (output_width, output_height))
-        
-        # Create or resize output canvas
-        if i == 0:
-            output = np.zeros((output_height, output_width, 3), dtype=np.uint8)
-            output[new_translation_y:new_translation_y + h1, 
-                   new_translation_x:new_translation_x + w1] = base_image
+        # Resize for SIFT (smaller for faster processing)
+        if img.shape[1] > resize_width:
+            scale = resize_width / img.shape[1]
+            new_size = (resize_width, int(img.shape[0] * scale))
+            sift_img = cv2.resize(img, new_size, interpolation=cv2.INTER_AREA)
         else:
-            # Resize existing output
-            if output.shape[0] < output_height or output.shape[1] < output_width:
-                new_output = np.zeros((output_height, output_width, 3), dtype=np.uint8)
-                old_h, old_w = output.shape[:2]
-                old_y = new_translation_y - (new_translation_y - translation_y)
-                old_x = new_translation_x - (new_translation_x - translation_x)
-                if old_y >= 0 and old_x >= 0:
-                    new_output[old_y:old_y + old_h, old_x:old_x + old_w] = output
-                else:
-                    # Handle negative indices
-                    src_y_start = max(0, -old_y)
-                    src_x_start = max(0, -old_x)
-                    dst_y_start = max(0, old_y)
-                    dst_x_start = max(0, old_x)
-                    src_h = min(old_h, output_height - dst_y_start)
-                    src_w = min(old_w, output_width - dst_x_start)
-                    new_output[dst_y_start:dst_y_start + src_h, 
-                              dst_x_start:dst_x_start + src_w] = \
-                        output[src_y_start:src_y_start + src_h, 
-                              src_x_start:src_x_start + src_w]
-                output = new_output
-        
-        # Blend images with better algorithm
-        mask1 = (output > 0).any(axis=2)
-        mask2 = (warped_img2 > 0).any(axis=2)
-        overlap = mask1 & mask2
-        
-        # Weighted blending in overlap region
-        for c in range(3):
-            output_channel = output[:, :, c].astype(np.float32)
-            warped_channel = warped_img2[:, :, c].astype(np.float32)
-            
-            # Non-overlap regions: use existing values
-            output_channel[~mask1] = warped_channel[~mask1]
-            
-            # Overlap region: weighted average (distance-based weights)
-            if np.any(overlap):
-                # Simple equal weight blending
-                output_channel[overlap] = (output_channel[overlap] + warped_channel[overlap]) / 2.0
-            
-            output[:, :, c] = np.clip(output_channel, 0, 255).astype(np.uint8)
-        
-        # Update base for next iteration
-        base_image = output
-        base_gray = cv2.cvtColor(output, cv2.COLOR_BGR2GRAY) if len(output.shape) == 3 else output
-        translation_x = new_translation_x
-        translation_y = new_translation_y
+            sift_img = img.copy()
+        resized_for_sift.append(sift_img)
     
-    stitched_custom = base_image
+    # Use OpenCV Stitcher
+    opencv_success, stitched_opencv = stitch_images_opencv(resized_images)
     
-    # Encode results
-    stitched_custom_b64 = encode_image_to_base64(stitched_custom)
-    
-    # Create comparison image
-    if opencv_success and stitched_opencv_b64:
-        comparison_note = "Both methods succeeded"
-    elif opencv_success:
-        comparison_note = "OpenCV method succeeded, custom method completed"
-    else:
-        comparison_note = "Custom method completed (OpenCV method failed)"
-    
-    return {
-        'success': True,
-        'stitched_custom': stitched_custom_b64,
-        'stitched_opencv': stitched_opencv_b64,
+    result = {
+        'success': opencv_success,
         'opencv_success': opencv_success,
         'num_images': len(images),
-        'comparison_note': comparison_note
     }
+    
+    # SIFT Feature Extraction and Matching (automatically run on consecutive pairs)
+    sift_results = []
+    sift_matches_images = []
+    sift_opencv_matches_images = []
+    
+    if len(resized_for_sift) >= 2:
+        # Initialize SIFT detector
+        siftr = SIFTFromScratch(
+            num_octaves=4,
+            num_scales=3,
+            sigma=1.6,
+            contrast_threshold=0.04,
+            edge_threshold=10.0,
+        )
+        
+        # Process each consecutive pair
+        for i in range(len(resized_for_sift) - 1):
+            img_a = resized_for_sift[i]
+            img_b = resized_for_sift[i + 1]
+            
+            gray_a = cv2.cvtColor(img_a, cv2.COLOR_BGR2GRAY) if len(img_a.shape) == 3 else img_a
+            gray_b = cv2.cvtColor(img_b, cv2.COLOR_BGR2GRAY) if len(img_b.shape) == 3 else img_b
+            gray_a_float = gray_a.astype(np.float32) / 255.0
+            gray_b_float = gray_b.astype(np.float32) / 255.0
+            
+            try:
+                # Custom SIFT
+                custom_kp_a, custom_desc_a = siftr.detect_and_compute(gray_a_float)
+                custom_kp_b, custom_desc_b = siftr.detect_and_compute(gray_b_float)
+                
+                # Match descriptors
+                custom_matches = match_descriptors(custom_desc_a, custom_desc_b, ratio=0.75)
+                custom_pts_a = keypoints_to_array(custom_kp_a)
+                custom_pts_b = keypoints_to_array(custom_kp_b)
+                
+                # RANSAC
+                custom_H, custom_inliers = ransac_homography(
+                    custom_pts_a, custom_pts_b, custom_matches,
+                    iterations=2000, threshold=3.0
+                )
+                
+                # Draw matches - show all matches if no inliers, otherwise show inliers
+                if custom_matches:
+                    if custom_inliers:
+                        vis_custom = draw_matches(
+                            img_a, img_b,
+                            [(kp.x, kp.y) for kp in custom_kp_a],
+                            [(kp.x, kp.y) for kp in custom_kp_b],
+                            custom_matches,
+                            custom_inliers[:80],
+                        )
+                    else:
+                        # Show all matches if no inliers found
+                        vis_custom = draw_matches(
+                            img_a, img_b,
+                            [(kp.x, kp.y) for kp in custom_kp_a],
+                            [(kp.x, kp.y) for kp in custom_kp_b],
+                            custom_matches,
+                            list(range(min(80, len(custom_matches)))),
+                        )
+                    sift_matches_images.append(encode_image_to_base64(vis_custom))
+                else:
+                    sift_matches_images.append(None)
+                
+                # OpenCV SIFT for comparison
+                opencv_match_image = None
+                opencv_inliers = 0
+                try:
+                    reference = cv2.SIFT_create()
+                    ref_kp_a, ref_desc_a = reference.detectAndCompute((gray_a_float * 255).astype(np.uint8), None)
+                    ref_kp_b, ref_desc_b = reference.detectAndCompute((gray_b_float * 255).astype(np.uint8), None)
+                    
+                    bf = cv2.BFMatcher(cv2.NORM_L2, crossCheck=False)
+                    ref_matches_knn = bf.knnMatch(ref_desc_a, ref_desc_b, k=2)
+                    ref_matches = []
+                    for m, n in ref_matches_knn:
+                        if m.distance < 0.75 * n.distance:
+                            ref_matches.append(m)
+                    
+                    ref_pts_a = np.array([kp.pt for kp in ref_kp_a], dtype=np.float32)
+                    ref_pts_b = np.array([kp.pt for kp in ref_kp_b], dtype=np.float32)
+                    ref_H, ref_inliers = ransac_homography(
+                        ref_pts_a, ref_pts_b, ref_matches,
+                        iterations=2000, threshold=3.0
+                    )
+                    
+                    opencv_inliers = len(ref_inliers) if ref_inliers else 0
+                    
+                    # Draw OpenCV matches
+                    if ref_matches:
+                        if ref_inliers:
+                            vis_opencv = draw_matches(
+                                img_a, img_b,
+                                [kp.pt for kp in ref_kp_a],
+                                [kp.pt for kp in ref_kp_b],
+                                ref_matches,
+                                ref_inliers[:80],
+                            )
+                        else:
+                            vis_opencv = draw_matches(
+                                img_a, img_b,
+                                [kp.pt for kp in ref_kp_a],
+                                [kp.pt for kp in ref_kp_b],
+                                ref_matches,
+                                list(range(min(80, len(ref_matches)))),
+                            )
+                        opencv_match_image = encode_image_to_base64(vis_opencv)
+                except Exception as e:
+                    opencv_inliers = 0
+                    opencv_match_image = None
+                
+                sift_results.append({
+                    'pair': f'{i+1}-{i+2}',
+                    'custom_keypoints_a': len(custom_kp_a),
+                    'custom_keypoints_b': len(custom_kp_b),
+                    'custom_matches': len(custom_matches),
+                    'custom_inliers': len(custom_inliers) if custom_inliers else 0,
+                    'opencv_inliers': opencv_inliers,
+                    'homography_found': custom_H is not None
+                })
+                sift_opencv_matches_images.append(opencv_match_image)
+            except Exception as e:
+                sift_results.append({
+                    'pair': f'{i+1}-{i+2}',
+                    'error': str(e)
+                })
+                sift_matches_images.append(None)
+                sift_opencv_matches_images.append(None)
+    
+    result['sift_results'] = sift_results
+    result['sift_matches_images'] = sift_matches_images
+    result['sift_opencv_matches_images'] = sift_opencv_matches_images
+    
+    if opencv_success and stitched_opencv is not None:
+        stitched_opencv_b64 = encode_image_to_base64(stitched_opencv)
+        result['stitched_opencv'] = stitched_opencv_b64
+        result['comparison_note'] = f"Successfully stitched {len(images)} images. SIFT features extracted from {len(sift_results)} image pair(s)."
+        
+        # If reference image provided, include it separately for manual comparison
+        if reference_image_data:
+            try:
+                reference_img = decode_base64_image(reference_image_data)
+                if reference_img is not None:
+                    result['reference_image'] = encode_image_to_base64(reference_img)
+                    result['has_reference'] = True
+                else:
+                    result['has_reference'] = False
+                    result['reference_error'] = 'Invalid reference image'
+            except Exception as e:
+                result['has_reference'] = False
+                result['reference_error'] = str(e)
+        else:
+            result['has_reference'] = False
+    else:
+        result['stitched_opencv'] = None
+        result['comparison_note'] = "Stitching failed. Try ensuring images have 30-50% overlap and sufficient features."
+        result['has_reference'] = False
+    
+    return result
 
-def extract_sift_features_handler(image_data, compare_with_opencv=True):
+# ---------------------------------------------------------------------------
+# SIFT Implementation (from task2_sift.py)
+# ---------------------------------------------------------------------------
+
+class SIFTFromScratch:
+    """Custom SIFT implementation from scratch."""
+    
+    def __init__(
+        self,
+        num_octaves: int = 4,
+        num_scales: int = 3,
+        sigma: float = 1.6,
+        contrast_threshold: float = 0.04,
+        edge_threshold: float = 10.0,
+    ) -> None:
+        self.num_octaves = num_octaves
+        self.num_scales = num_scales
+        self.sigma = sigma
+        self.contrast_threshold = contrast_threshold
+        self.edge_threshold = edge_threshold
+
+    def detect_and_compute(
+        self, image_gray: np.ndarray
+    ) -> Tuple[List[Keypoint], np.ndarray]:
+        base = cv2.GaussianBlur(image_gray, (0, 0), self.sigma, borderType=cv2.BORDER_REPLICATE)
+        gaussian_pyramid = self._build_gaussian_pyramid(base)
+        dog_pyramid = self._build_dog_pyramid(gaussian_pyramid)
+        keypoints = self._find_scale_space_extrema(gaussian_pyramid, dog_pyramid)
+        oriented_keypoints = self._assign_orientations(keypoints, gaussian_pyramid)
+        descriptors = self._compute_descriptors(oriented_keypoints, gaussian_pyramid)
+        return oriented_keypoints, descriptors
+
+    def _build_gaussian_pyramid(self, base: np.ndarray) -> List[List[np.ndarray]]:
+        pyramid: List[List[np.ndarray]] = []
+        k = 2 ** (1 / self.num_scales)
+        sigma0 = self.sigma
+
+        for octave_idx in range(self.num_octaves):
+            octave_images: List[np.ndarray] = []
+            sigma_prev = sigma0
+            octave_images.append(base)
+            for scale_idx in range(1, self.num_scales + 3):
+                sigma_total = sigma0 * (k ** scale_idx)
+                sigma_diff = math.sqrt(max(sigma_total**2 - sigma_prev**2, 1e-6))
+                blurred = cv2.GaussianBlur(
+                    octave_images[-1],
+                    (0, 0),
+                    sigma_diff,
+                    borderType=cv2.BORDER_REPLICATE,
+                )
+                octave_images.append(blurred)
+                sigma_prev = sigma_total
+            pyramid.append(octave_images)
+
+            # Prepare base for next octave (downsample by factor of 2)
+            next_base = octave_images[-3]
+            height, width = next_base.shape
+            if height <= 16 or width <= 16:
+                break
+            base = cv2.resize(
+                next_base,
+                (width // 2, height // 2),
+                interpolation=cv2.INTER_NEAREST,
+            )
+
+        return pyramid
+
+    def _build_dog_pyramid(
+        self, gaussian_pyramid: List[List[np.ndarray]]
+    ) -> List[List[np.ndarray]]:
+        dog_pyramid: List[List[np.ndarray]] = []
+        for octave in gaussian_pyramid:
+            dog_octave = []
+            for i in range(1, len(octave)):
+                dog_octave.append(octave[i] - octave[i - 1])
+            dog_pyramid.append(dog_octave)
+        return dog_pyramid
+
+    def _find_scale_space_extrema(
+        self,
+        gaussian_pyramid: List[List[np.ndarray]],
+        dog_pyramid: List[List[np.ndarray]],
+    ) -> List[Keypoint]:
+        keypoints: List[Keypoint] = []
+        threshold = self.contrast_threshold / self.num_scales
+
+        for octave_idx, dog_octave in enumerate(dog_pyramid):
+            for layer_idx in range(1, len(dog_octave) - 1):
+                prev_img = dog_octave[layer_idx - 1]
+                curr_img = dog_octave[layer_idx]
+                next_img = dog_octave[layer_idx + 1]
+                rows, cols = curr_img.shape
+                for y in range(1, rows - 1):
+                    for x in range(1, cols - 1):
+                        value = curr_img[y, x]
+                        if abs(value) < threshold:
+                            continue
+                        patch = np.concatenate(
+                            [
+                                prev_img[y - 1 : y + 2, x - 1 : x + 2].ravel(),
+                                curr_img[y - 1 : y + 2, x - 1 : x + 2].ravel(),
+                                next_img[y - 1 : y + 2, x - 1 : x + 2,].ravel(),
+                            ]
+                        )
+                        if value > 0 and value != patch.max():
+                            continue
+                        if value < 0 and value != patch.min():
+                            continue
+                        if self._is_edge_response(curr_img, x, y):
+            continue
+                        sigma = self.sigma * (2 ** octave_idx) * (2 ** (layer_idx / self.num_scales))
+                        kp = Keypoint(
+                            x=x * (2**octave_idx),
+                            y=y * (2**octave_idx),
+                            octave=octave_idx,
+                            layer=layer_idx,
+                            sigma=sigma,
+                            orientation=0.0,
+                        )
+                        keypoints.append(kp)
+
+        return keypoints
+
+    def _is_edge_response(self, image: np.ndarray, x: int, y: int) -> bool:
+        dxx = image[y, x + 1] + image[y, x - 1] - 2 * image[y, x]
+        dyy = image[y + 1, x] + image[y - 1, x] - 2 * image[y, x]
+        dxy = (
+            image[y + 1, x + 1]
+            + image[y - 1, x - 1]
+            - image[y + 1, x - 1]
+            - image[y - 1, x + 1]
+        )
+        tr = dxx + dyy
+        det = dxx * dyy - dxy**2
+        if det <= 0:
+            return True
+        r = (self.edge_threshold + 1) ** 2 / self.edge_threshold
+        return (tr * tr) * r >= det
+
+    def _assign_orientations(
+        self, keypoints: List[Keypoint], gaussian_pyramid: List[List[np.ndarray]]
+    ) -> List[Keypoint]:
+        oriented: List[Keypoint] = []
+        for kp in keypoints:
+            octave_images = gaussian_pyramid[kp.octave]
+            gaussian_img = octave_images[kp.layer]
+            scale = kp.sigma
+            radius = int(round(3 * scale))
+            weight_factor = -0.5 / (scale**2)
+            hist = np.zeros(36, dtype=np.float32)
+
+            x = int(round(kp.x / (2**kp.octave)))
+            y = int(round(kp.y / (2**kp.octave)))
+
+            rows, cols = gaussian_img.shape
+            for dy in range(-radius, radius + 1):
+                yy = y + dy
+                if yy <= 0 or yy >= rows - 1:
+                    continue
+                for dx in range(-radius, radius + 1):
+                    xx = x + dx
+                    if xx <= 0 or xx >= cols - 1:
+                        continue
+                    gx = gaussian_img[yy, xx + 1] - gaussian_img[yy, xx - 1]
+                    gy = gaussian_img[yy - 1, xx] - gaussian_img[yy + 1, xx]
+                    magnitude = math.sqrt(gx * gx + gy * gy)
+                    orientation = math.degrees(math.atan2(gy, gx)) % 360
+                    weight = math.exp(weight_factor * (dx * dx + dy * dy))
+                    bin_idx = int(round(orientation / 10)) % 36
+                    hist[bin_idx] += weight * magnitude
+
+            max_val = hist.max()
+            if max_val == 0:
+            continue
+            for bin_idx, value in enumerate(hist):
+                if value >= 0.8 * max_val:
+                    angle = (bin_idx * 10) % 360
+                    oriented.append(
+                        Keypoint(
+                            x=kp.x,
+                            y=kp.y,
+                            octave=kp.octave,
+                            layer=kp.layer,
+                            sigma=kp.sigma,
+                            orientation=math.radians(angle),
+                        )
+                    )
+
+        return oriented
+
+    def _compute_descriptors(
+        self, keypoints: List[Keypoint], gaussian_pyramid: List[List[np.ndarray]]
+    ) -> np.ndarray:
+        descriptors: List[np.ndarray] = []
+        for kp in keypoints:
+            octave_img = gaussian_pyramid[kp.octave][kp.layer]
+            kp_scale = kp.sigma
+            cos_o = math.cos(kp.orientation)
+            sin_o = math.sin(kp.orientation)
+            rows, cols = octave_img.shape
+
+            descriptor = np.zeros((4, 4, 8), dtype=np.float32)
+            window_size = int(round(8 * kp_scale))
+            half_width = window_size // 2
+
+            base_x = kp.x / (2**kp.octave)
+            base_y = kp.y / (2**kp.octave)
+
+            for dy in range(-half_width, half_width):
+                for dx in range(-half_width, half_width):
+                    # Rotate relative coordinates
+                    rx = (cos_o * dx - sin_o * dy) + base_x
+                    ry = (sin_o * dx + cos_o * dy) + base_y
+                    ix, iy = int(round(rx)), int(round(ry))
+                    if iy <= 0 or iy >= rows - 1 or ix <= 0 or ix >= cols - 1:
+                        continue
+                    gx = octave_img[iy, ix + 1] - octave_img[iy, ix - 1]
+                    gy = octave_img[iy - 1, ix] - octave_img[iy + 1, ix]
+                    magnitude = math.sqrt(gx * gx + gy * gy)
+                    theta = (math.degrees(math.atan2(gy, gx)) - math.degrees(kp.orientation)) % 360
+
+                    weight = math.exp(-((dx**2 + dy**2) / (2 * (0.5 * window_size) ** 2)))
+                    magnitude *= weight
+
+                    cell_x = int(
+                        math.floor(
+                            ((cos_o * dx - sin_o * dy) + half_width) / (half_width / 2 + 1e-5)
+                        )
+                    )
+                    cell_y = int(
+                        math.floor(
+                            ((sin_o * dx + cos_o * dy) + half_width) / (half_width / 2 + 1e-5)
+                        )
+                    )
+                    if cell_x < 0 or cell_x >= 4 or cell_y < 0 or cell_y >= 4:
+                        continue
+                    bin_idx = int(round(theta / 45)) % 8
+                    descriptor[cell_y, cell_x, bin_idx] += magnitude
+
+            vec = descriptor.ravel()
+            norm = np.linalg.norm(vec)
+            if norm > 1e-6:
+                vec = vec / norm
+                vec = np.clip(vec, 0, 0.2)
+                vec = vec / (np.linalg.norm(vec) + 1e-6)
+            descriptors.append(vec)
+
+        if not descriptors:
+            return np.zeros((0, 128), dtype=np.float32)
+        return np.vstack(descriptors)
+
+# ---------------------------------------------------------------------------
+# Matching + RANSAC helpers (from task2_sift.py)
+# ---------------------------------------------------------------------------
+
+def match_descriptors(
+    desc_a: np.ndarray, desc_b: np.ndarray, ratio: float
+) -> List[Match]:
+    matches: List[Match] = []
+    if desc_a.size == 0 or desc_b.size == 0:
+        return matches
+    for idx_a, vector in enumerate(desc_a):
+        distances = np.linalg.norm(desc_b - vector, axis=1)
+        if len(distances) < 2:
+            continue
+        best_idx = np.argmin(distances)
+        best = distances[best_idx]
+        distances[best_idx] = np.inf
+        second = np.min(distances)
+        if best < ratio * second:
+            matches.append(Match(idx_a=idx_a, idx_b=int(best_idx), distance=float(best)))
+    return matches
+
+def compute_homography(pairs: List[Tuple[np.ndarray, np.ndarray]]) -> np.ndarray:
+    A = []
+    for src, dst in pairs:
+        x, y = src
+        u, v = dst
+        A.append([-x, -y, -1, 0, 0, 0, u * x, u * y, u])
+        A.append([0, 0, 0, -x, -y, -1, v * x, v * y, v])
+    A = np.array(A, dtype=np.float64)
+    _, _, vt = np.linalg.svd(A)
+    h = vt[-1, :]
+    H = h.reshape(3, 3)
+    return H / H[2, 2]
+
+def ransac_homography(
+    pts_a: np.ndarray,
+    pts_b: np.ndarray,
+    matches: List[Match] | List[cv2.DMatch],
+    iterations: int,
+    threshold: float,
+) -> Tuple[np.ndarray | None, List[int]]:
+    if len(matches) < 4:
+        return None, []
+    best_inliers: List[int] = []
+    best_H: np.ndarray | None = None
+    rng = random.Random(42)
+    match_indices = list(range(len(matches)))
+
+    for _ in range(iterations):
+        sample_ids = rng.sample(match_indices, 4)
+        pair_samples = []
+        for idx in sample_ids:
+            match = matches[idx]
+            ia = match.queryIdx if hasattr(match, "queryIdx") else match.idx_a
+            ib = match.trainIdx if hasattr(match, "trainIdx") else match.idx_b
+            pair_samples.append((pts_a[ia], pts_b[ib]))
+        H = compute_homography(pair_samples)
+
+        inliers: List[int] = []
+        for idx, match in enumerate(matches):
+            ia = match.queryIdx if hasattr(match, "queryIdx") else match.idx_a
+            ib = match.trainIdx if hasattr(match, "trainIdx") else match.idx_b
+            pt_a = np.append(pts_a[ia], 1.0)
+            projected = H @ pt_a
+            projected /= projected[2]
+            error = np.linalg.norm(projected[:2] - pts_b[ib])
+            if error < threshold:
+                inliers.append(idx)
+
+        if len(inliers) > len(best_inliers):
+            best_inliers = inliers
+            best_H = H
+
+    return best_H, best_inliers
+
+def keypoints_to_array(kps: Sequence[Keypoint]) -> np.ndarray:
+    return np.array([[kp.x, kp.y] for kp in kps], dtype=np.float32)
+
+def keypoints_to_cv_keypoints(kps: Sequence[Keypoint]) -> List[cv2.KeyPoint]:
+    return [cv2.KeyPoint(float(kp.x), float(kp.y), 1) for kp in kps]
+
+def draw_matches(
+    img_a: np.ndarray,
+    img_b: np.ndarray,
+    keypoints_a: Iterable[Tuple[float, float]],
+    keypoints_b: Iterable[Tuple[float, float]],
+    matches: List[Match] | List[cv2.DMatch],
+    inlier_indices: List[int],
+) -> np.ndarray:
+    kp_a = [cv2.KeyPoint(float(x), float(y), 1) for x, y in keypoints_a]
+    kp_b = [cv2.KeyPoint(float(x), float(y), 1) for x, y in keypoints_b]
+    if matches and isinstance(matches[0], Match):
+        cv_matches = [
+            cv2.DMatch(_queryIdx=m.idx_a, _trainIdx=m.idx_b, _distance=m.distance)
+            for m in matches
+        ]
+    else:
+        cv_matches = matches
+    inlier_matches = [cv_matches[idx] for idx in inlier_indices]
+    vis = cv2.drawMatches(
+        img_a,
+        kp_a,
+        img_b,
+        kp_b,
+        inlier_matches,
+        None,
+        flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS,
+    )
+    return vis
+
+# ---------------------------------------------------------------------------
+# Handler functions for web interface
+# ---------------------------------------------------------------------------
+
+def extract_sift_features_handler(image1_data, image2_data=None, compare_with_opencv=True):
     """
     Problem 2: SIFT Feature Extraction from Scratch
     
     Implements SIFT feature extraction from scratch and compares with OpenCV SIFT.
-    Includes RANSAC optimization for feature matching.
+    If two images are provided, also performs matching with RANSAC.
     
     Args:
-        image_data: Base64 encoded image
+        image1_data: Base64 encoded first image
+        image2_data: Base64 encoded second image (optional, for matching)
         compare_with_opencv: Whether to compare with OpenCV SIFT
         
     Returns:
         Dictionary with SIFT features, keypoints, and comparison
     """
-    image = decode_base64_image(image_data)
-    if image is None:
+    img1 = decode_base64_image(image1_data)
+    if img1 is None:
         return {'success': False, 'error': 'Invalid image'}
     
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if len(image.shape) == 3 else image
-    
-    # Method 1: Custom SIFT implementation (simplified)
-    # Note: Full SIFT is very complex, so we implement key components
-    
-    # Step 1: Scale-space extrema detection (simplified)
-    # Build Gaussian pyramid
-    octaves = 4
-    scales_per_octave = 3
-    sigma = 1.6
-    k = np.sqrt(2)
-    
-    # Create scale space
-    gaussian_pyramid = []
-    for octave in range(octaves):
-        octave_images = []
-        for scale in range(scales_per_octave + 3):
-            sigma_scale = sigma * (k ** scale)
-            if octave == 0:
-                if scale == 0:
-                    blurred = cv2.GaussianBlur(gray, (0, 0), sigma_scale)
-                else:
-                    blurred = cv2.GaussianBlur(gray, (0, 0), sigma_scale)
-            else:
-                # Downsample for higher octaves
-                downsampled = cv2.resize(gray, (gray.shape[1] // (2 ** octave), 
-                                               gray.shape[0] // (2 ** octave)))
-                blurred = cv2.GaussianBlur(downsampled, (0, 0), sigma_scale)
-            octave_images.append(blurred)
-        gaussian_pyramid.append(octave_images)
-    
-    # Step 2: Difference of Gaussians (DoG)
-    dog_pyramid = []
-    for octave_images in gaussian_pyramid:
-        octave_dog = []
-        for i in range(len(octave_images) - 1):
-            dog = cv2.subtract(octave_images[i + 1], octave_images[i])
-            octave_dog.append(dog)
-        dog_pyramid.append(octave_dog)
-    
-    # Step 3: Find keypoints (simplified - find local extrema)
-    keypoints_custom = []
-    for octave_idx, octave_dog in enumerate(dog_pyramid):
-        for scale_idx in range(1, len(octave_dog) - 1):
-            img = octave_dog[scale_idx]
-            h, w = img.shape
-            
-            # Find local maxima and minima
-            for y in range(1, h - 1):
-                for x in range(1, w - 1):
-                    val = img[y, x]
-                    # Check 3x3x3 neighborhood
-                    is_extrema = True
-                    for dy in [-1, 0, 1]:
-                        for dx in [-1, 0, 1]:
-                            for ds in [-1, 0, 1]:
-                                if ds == 0 and dy == 0 and dx == 0:
-                                    continue
-                                neighbor_val = octave_dog[scale_idx + ds][y + dy, x + dx] if \
-                                    0 <= scale_idx + ds < len(octave_dog) and \
-                                    0 <= y + dy < h and 0 <= x + dx < w else val
-                                if abs(neighbor_val) >= abs(val):
-                                    is_extrema = False
-                                    break
-                            if not is_extrema:
-                                break
-                        if not is_extrema:
-                            break
-                    
-                    if is_extrema and abs(val) > 0.03:  # Threshold
-                        # Scale back to original image coordinates
-                        scale_factor = 2 ** octave_idx
-                        kp = cv2.KeyPoint(x * scale_factor, y * scale_factor, 
-                                         size=sigma * (k ** scale_idx) * scale_factor)
-                        keypoints_custom.append(kp)
-    
-    # Step 4: Compute descriptors (simplified - use gradient histograms)
-    # For full implementation, would compute orientation histograms and SIFT descriptors
-    # Here we use a simplified version
-    
-    # Draw custom keypoints
-    img_with_custom_kp = image.copy()
-    cv2.drawKeypoints(image, keypoints_custom, img_with_custom_kp, 
-                     flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
-    
-    # Method 2: OpenCV SIFT (for comparison)
-    if compare_with_opencv:
-        try:
-            sift = cv2.SIFT_create(nfeatures=500)
-            kp_opencv, des_opencv = sift.detectAndCompute(gray, None)
-            
-            img_with_opencv_kp = image.copy()
-            cv2.drawKeypoints(image, kp_opencv, img_with_opencv_kp,
-                           flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
-            
-            opencv_success = True
-        except:
-            opencv_success = False
-            kp_opencv = []
-            des_opencv = None
-            img_with_opencv_kp = image.copy()
-    else:
-        opencv_success = False
-        kp_opencv = []
-        des_opencv = None
-        img_with_opencv_kp = image.copy()
-    
-    # Create comparison visualization
-    comparison = np.hstack([img_with_custom_kp, img_with_opencv_kp])
-    
-    return {
-        'success': True,
-        'original_image': encode_image_to_base64(image),
-        'custom_keypoints': encode_image_to_base64(img_with_custom_kp),
-        'opencv_keypoints': encode_image_to_base64(img_with_opencv_kp),
-        'comparison': encode_image_to_base64(comparison),
-        'custom_kp_count': len(keypoints_custom),
-        'opencv_kp_count': len(kp_opencv) if opencv_success else 0,
-        'opencv_success': opencv_success,
-        'note': 'Custom SIFT is simplified. Full SIFT includes detailed orientation assignment and descriptor computation.'
-    }
-
-def match_sift_features_handler(image1_data, image2_data, use_ransac=True):
-    """
-    Problem 2 Extension: SIFT Feature Matching with RANSAC
-    
-    Matches SIFT features between two images using RANSAC optimization.
-    
-    Args:
-        image1_data: Base64 encoded first image
-        image2_data: Base64 encoded second image
-        use_ransac: Whether to use RANSAC for outlier removal
-        
-    Returns:
-        Dictionary with matched features and visualization
-    """
-    img1 = decode_base64_image(image1_data)
-    img2 = decode_base64_image(image2_data)
-    
-    if img1 is None or img2 is None:
-        return {'success': False, 'error': 'Invalid image(s)'}
+    # Resize if too large
+    resize_width = 960
+    if img1.shape[1] > resize_width:
+        scale = resize_width / img1.shape[1]
+        new_size = (resize_width, int(img1.shape[0] * scale))
+        img1 = cv2.resize(img1, new_size, interpolation=cv2.INTER_AREA)
     
     gray1 = cv2.cvtColor(img1, cv2.COLOR_BGR2GRAY) if len(img1.shape) == 3 else img1
-    gray2 = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY) if len(img2.shape) == 3 else img2
+    gray1_float = gray1.astype(np.float32) / 255.0
     
-    # Use OpenCV SIFT for feature detection and description
-    sift = cv2.SIFT_create(nfeatures=5000)
-    kp1, des1 = sift.detectAndCompute(gray1, None)
-    kp2, des2 = sift.detectAndCompute(gray2, None)
+    # Custom SIFT
+    siftr = SIFTFromScratch(
+        num_octaves=4,
+        num_scales=3,
+        sigma=1.6,
+        contrast_threshold=0.04,
+        edge_threshold=10.0,
+    )
     
-    if des1 is None or des2 is None:
-        return {'success': False, 'error': 'Could not extract features from one or both images'}
+    custom_kp_a, custom_desc_a = siftr.detect_and_compute(gray1_float)
     
-    # Match features using FLANN or BFMatcher
-    FLANN_INDEX_KDTREE = 1
-    index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=5)
-    search_params = dict(checks=50)
-    flann = cv2.FlannBasedMatcher(index_params, search_params)
+    # Draw custom keypoints
+    img_with_custom_kp = img1.copy()
+    custom_cv_kp = keypoints_to_cv_keypoints(custom_kp_a)
+    cv2.drawKeypoints(img1, custom_cv_kp, img_with_custom_kp, 
+                     flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
     
-    matches = flann.knnMatch(des1, des2, k=2)
-    
-    # Apply ratio test (Lowe's ratio test)
-    good_matches = []
-    for match_pair in matches:
-        if len(match_pair) == 2:
-            m, n = match_pair
-            if m.distance < 0.7 * n.distance:
-                good_matches.append(m)
-    
-    if len(good_matches) < 4:
-        return {'success': False, 'error': f'Not enough good matches found: {len(good_matches)} (need at least 4)'}
-    
-    # Extract matched points
-    src_pts = np.float32([kp1[m.queryIdx].pt for m in good_matches]).reshape(-1, 1, 2)
-    dst_pts = np.float32([kp2[m.trainIdx].pt for m in good_matches]).reshape(-1, 1, 2)
-    
-    # Apply RANSAC to find homography and remove outliers
-    if use_ransac:
-        homography, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
-        
-        if homography is not None:
-            # Filter matches using RANSAC mask
-            inlier_matches = [good_matches[i] for i in range(len(good_matches)) if mask[i]]
-            inlier_count = len(inlier_matches)
-        else:
-            inlier_matches = good_matches
-            inlier_count = len(good_matches)
-            mask = np.ones(len(good_matches), dtype=np.uint8)
-    else:
-        inlier_matches = good_matches
-        inlier_count = len(good_matches)
-        mask = np.ones(len(good_matches), dtype=np.uint8)
-        homography = None
-    
-    # Draw matches
-    img_matches = cv2.drawMatches(img1, kp1, img2, kp2, inlier_matches, None,
-                                 flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
-    
-    # Draw all matches (before RANSAC) for comparison
-    img_all_matches = cv2.drawMatches(img1, kp1, img2, kp2, good_matches, None,
-                                     flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
-    
-    return {
+    result = {
         'success': True,
-        'image1': encode_image_to_base64(img1),
-        'image2': encode_image_to_base64(img2),
-        'all_matches': encode_image_to_base64(img_all_matches),
-        'ransac_matches': encode_image_to_base64(img_matches),
-        'total_matches': len(good_matches),
-        'inlier_matches': inlier_count,
-        'outlier_matches': len(good_matches) - inlier_count,
-        'ransac_used': use_ransac,
-        'homography_found': homography is not None
+        'original_image': encode_image_to_base64(img1),
+        'custom_keypoints': encode_image_to_base64(img_with_custom_kp),
+        'custom_kp_count': len(custom_kp_a),
     }
-
+    
+    # OpenCV SIFT comparison
+    if compare_with_opencv:
+        try:
+            reference = cv2.SIFT_create()
+            ref_kp_a, ref_desc_a = reference.detectAndCompute((gray1_float * 255).astype(np.uint8), None)
+            
+            img_with_opencv_kp = img1.copy()
+            cv2.drawKeypoints(img1, ref_kp_a, img_with_opencv_kp,
+                           flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+            
+    comparison = np.hstack([img_with_custom_kp, img_with_opencv_kp])
+    
+            result.update({
+        'opencv_keypoints': encode_image_to_base64(img_with_opencv_kp),
+        'comparison': encode_image_to_base64(comparison),
+                'opencv_kp_count': len(ref_kp_a),
+                'opencv_success': True,
+            })
+        except Exception as e:
+            result.update({
+                'opencv_success': False,
+                'opencv_error': str(e),
+            })
+    
+    # If two images provided, do matching
+    if image2_data:
+    img2 = decode_base64_image(image2_data)
+        if img2 is None:
+            return {'success': False, 'error': 'Invalid second image'}
+        
+        if img2.shape[1] > resize_width:
+            scale = resize_width / img2.shape[1]
+            new_size = (resize_width, int(img2.shape[0] * scale))
+            img2 = cv2.resize(img2, new_size, interpolation=cv2.INTER_AREA)
+        
+    gray2 = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY) if len(img2.shape) == 3 else img2
+        gray2_float = gray2.astype(np.float32) / 255.0
+        
+        # Custom SIFT on second image
+        custom_kp_b, custom_desc_b = siftr.detect_and_compute(gray2_float)
+        
+        # Match descriptors
+        custom_matches = match_descriptors(custom_desc_a, custom_desc_b, ratio=0.75)
+        custom_pts_a = keypoints_to_array(custom_kp_a)
+        custom_pts_b = keypoints_to_array(custom_kp_b)
+    
+        # RANSAC
+        custom_H, custom_inliers = ransac_homography(
+            custom_pts_a, custom_pts_b, custom_matches, 
+            iterations=2000, threshold=3.0
+        )
+        
+        # Draw matches
+        if custom_inliers:
+            vis_custom = draw_matches(
+                img1, img2,
+                [(kp.x, kp.y) for kp in custom_kp_a],
+                [(kp.x, kp.y) for kp in custom_kp_b],
+                custom_matches,
+                custom_inliers[:80],
+            )
+            result['custom_matches'] = encode_image_to_base64(vis_custom)
+            result['custom_matches_count'] = len(custom_matches)
+            result['custom_inliers_count'] = len(custom_inliers)
+            result['custom_homography_found'] = custom_H is not None
+        
+        # OpenCV SIFT matching
+        if compare_with_opencv and 'opencv_success' in result and result['opencv_success']:
+            try:
+                reference = cv2.SIFT_create()
+                ref_kp_a, ref_desc_a = reference.detectAndCompute((gray1_float * 255).astype(np.uint8), None)
+                ref_kp_b, ref_desc_b = reference.detectAndCompute((gray2_float * 255).astype(np.uint8), None)
+                bf = cv2.BFMatcher(cv2.NORM_L2, crossCheck=False)
+                ref_matches_knn = bf.knnMatch(ref_desc_a, ref_desc_b, k=2)
+                ref_matches = []
+                for m, n in ref_matches_knn:
+                    if m.distance < 0.75 * n.distance:
+                        ref_matches.append(m)
+                
+                ref_pts_a = np.array([kp.pt for kp in ref_kp_a], dtype=np.float32)
+                ref_pts_b = np.array([kp.pt for kp in ref_kp_b], dtype=np.float32)
+                ref_H, ref_inliers = ransac_homography(
+                    ref_pts_a, ref_pts_b, ref_matches, 
+                    iterations=2000, threshold=3.0
+                )
+                
+                if ref_inliers:
+                    vis_ref = draw_matches(
+                        img1, img2,
+                        [kp.pt for kp in ref_kp_a],
+                        [kp.pt for kp in ref_kp_b],
+                        ref_matches,
+                        ref_inliers[:80],
+                    )
+                    result['opencv_matches'] = encode_image_to_base64(vis_ref)
+                    result['opencv_matches_count'] = len(ref_matches)
+                    result['opencv_inliers_count'] = len(ref_inliers)
+                    result['opencv_homography_found'] = ref_H is not None
+            except Exception as e:
+                result['opencv_matching_error'] = str(e)
+    
+    return result

@@ -125,15 +125,57 @@
 {% endblock %}
 
 {% block scripts %}
+<!-- OpenCV.js -->
+<script src="https://docs.opencv.org/4.x/opencv.js" 
+  onload="if(window.initModule3Problem2) initModule3Problem2();"
+  onerror="console.error('Failed to load OpenCV.js')"></script>
+
+<!-- Assignment 3 Core Logic -->
+<script src="{{ url_for('static', filename='js/module3/assignment3_core.js') }}"></script>
+
 <script>
+let cvReady = false;
+let srcMat = null;
 let uploadedImage = null;
+
+// Wait for OpenCV to load
+function waitForCV() {
+  return new Promise((resolve) => {
+    if (window.cv && typeof window.cv.Mat === 'function') {
+      cvReady = true;
+      resolve();
+      return;
+    }
+    window.cv = window.cv || {};
+    window.cv.onRuntimeInitialized = () => {
+      cvReady = true;
+      resolve();
+    };
+    const intv = setInterval(() => {
+      if (window.cv && typeof window.cv.Mat === 'function') {
+        clearInterval(intv);
+        cvReady = true;
+        resolve();
+      }
+    }, 50);
+  });
+}
+
+function matToDataURL(mat) {
+  const canvas = document.createElement('canvas');
+  canvas.width = mat.cols;
+  canvas.height = mat.rows;
+  cv.imshow(canvas, mat);
+  return canvas.toDataURL('image/png');
+}
 
 function handleFileUpload(e) {
   const f = e.target.files[0];
   if(!f) return;
   const r = new FileReader();
-  r.onload = (ev) => {
+  r.onload = async (ev) => {
     uploadedImage = ev.target.result;
+    await waitForCV();
     document.getElementById('edgeBtn').disabled = false;
     document.getElementById('cornerBtn').disabled = false;
     document.getElementById('edgeResults').style.display = 'none';
@@ -143,67 +185,121 @@ function handleFileUpload(e) {
 }
 
 async function detectEdges() {
+  if (!cvReady) {
+    await waitForCV();
+  }
+  
+  if (!uploadedImage) {
+    alert('Please upload an image first');
+    return;
+  }
+  
   try {
-    const resp = await fetch('/module3/api/detect_edges', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ 
-        image: uploadedImage,
-        threshold1: parseInt(document.getElementById('threshold1').value),
-        threshold2: parseInt(document.getElementById('threshold2').value)
-      })
-    });
-    const res = await resp.json();
-    if(res.success) {
-      document.getElementById('edgeOriginalImg').src = res.original_image;
-      document.getElementById('edgesImg').src = res.edges;
-      document.getElementById('edgesOverlayImg').src = res.edges_overlay;
-      document.getElementById('edgeCount').innerText = res.edge_count.toLocaleString();
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      
+      if (srcMat) srcMat.delete();
+      srcMat = cv.imread(canvas);
+      
+      // Use Assignment 3 edge detection (NMS + Hysteresis)
+      const threshold1 = parseInt(document.getElementById('threshold1').value) || 50;
+      const threshold2 = parseInt(document.getElementById('threshold2').value) || 150;
+      const edgeAuto = true; // Auto threshold from Assignment 3
+      
+      const { out: edges, count } = edgeSimple(srcMat, true, threshold1, threshold2, edgeAuto);
+      
+      // Create overlay
+      const { out: overlay } = edgeSimple(srcMat, false, threshold1, threshold2, edgeAuto);
+      
+      document.getElementById('edgeOriginalImg').src = uploadedImage;
+      document.getElementById('edgesImg').src = matToDataURL(edges);
+      document.getElementById('edgesOverlayImg').src = matToDataURL(overlay);
+      document.getElementById('edgeCount').innerText = count.toLocaleString();
       document.getElementById('edgeResults').style.display = 'block';
-    } else {
-      alert('Error: ' + (res.error || 'Edge detection failed'));
-    }
+      
+      edges.delete();
+      overlay.delete();
+    };
+    img.src = uploadedImage;
   } catch(err) {
     alert('Error: ' + err.message);
+    console.error(err);
   }
 }
 
 async function detectCorners() {
+  if (!cvReady) {
+    await waitForCV();
+  }
+  
+  if (!uploadedImage) {
+    alert('Please upload an image first');
+    return;
+  }
+  
   try {
-    const resp = await fetch('/module3/api/detect_corners', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ 
-        image: uploadedImage,
-        max_corners: parseInt(document.getElementById('maxCorners').value),
-        quality: parseFloat(document.getElementById('quality').value),
-        min_distance: 10
-      })
-    });
-    const res = await resp.json();
-    if(res.success) {
-      document.getElementById('cornerOriginalImg').src = res.original_image;
-      document.getElementById('cornersImg').src = res.corners_visualization;
-      document.getElementById('cornerCount').innerText = res.corner_count;
-      document.getElementById('harrisCount').innerText = res.harris_corners;
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      
+      if (srcMat) srcMat.delete();
+      srcMat = cv.imread(canvas);
+      
+      // Use Assignment 3 Harris corner detection
+      const blockSize = 5;
+      const k = 0.04;
+      const th = 70;
+      
+      const { out: corners, count } = cornersHarris(srcMat, blockSize, k, th);
+      
+      document.getElementById('cornerOriginalImg').src = uploadedImage;
+      document.getElementById('cornersImg').src = matToDataURL(corners);
+      document.getElementById('cornerCount').innerText = count;
+      document.getElementById('harrisCount').innerText = count;
       document.getElementById('cornerResults').style.display = 'block';
-    } else {
-      alert('Error: ' + (res.error || 'Corner detection failed'));
-    }
+      
+      corners.delete();
+    };
+    img.src = uploadedImage;
   } catch(err) {
     alert('Error: ' + err.message);
+    console.error(err);
   }
 }
 
 function resetAll() {
   if(confirm('Reset everything and start over?')) {
     uploadedImage = null;
+    if (srcMat) {
+      srcMat.delete();
+      srcMat = null;
+    }
     document.getElementById('imageInput').value = '';
     document.getElementById('edgeResults').style.display = 'none';
     document.getElementById('cornerResults').style.display = 'none';
     document.getElementById('edgeBtn').disabled = true;
     document.getElementById('cornerBtn').disabled = true;
   }
+}
+
+function initModule3Problem2() {
+  waitForCV().then(() => {
+    console.log('OpenCV.js ready for Problem 2');
+  });
+}
+
+// Initialize if OpenCV already loaded
+if (window.cv && typeof window.cv.Mat === 'function') {
+  initModule3Problem2();
 }
 </script>
 {% endblock %}
