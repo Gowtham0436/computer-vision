@@ -10,8 +10,8 @@ Flask==3.0.0
 Werkzeug==3.0.1
 
 # Computer Vision
-opencv-python==4.8.1.78
-opencv-contrib-python==4.8.1.78
+# Use headless OpenCV for servers (no GUI / libGL dependency)
+opencv-python-headless==4.8.1.78
 numpy>=1.24.3,<2.0.0  # Compatible with Python 3.11
 Pillow>=10.1.0
 
