@@ -992,15 +992,15 @@ def segment_with_aruco_handler(image_data, use_corners=True):
     
     if not all([original_encoded, markers_encoded, segmented_encoded, overlay_encoded]):
         return {'success': False, 'error': 'Failed to encode result images'}
-        
-        return {
-            'success': True,
+    
+    return {
+        'success': True,
         'original_image': original_encoded,
         'markers_detected': markers_encoded,
         'segmented': segmented_encoded,
         'segmented_overlay': overlay_encoded,
-            'marker_count': int(len(ids)),
-            'boundary_points': boundary_points,
+        'marker_count': int(len(ids)),
+        'boundary_points': boundary_points,
         'area': area,
         'perimeter': perimeter
     }
