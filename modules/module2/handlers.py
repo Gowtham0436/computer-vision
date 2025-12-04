@@ -385,17 +385,12 @@ def match_template_handler(template_data, target_data, threshold=0.35):
         }
 def restore_image_handler(image_data):
     """
-    Problem 2: Image Restoration using Fourier Transform (Enhanced Wiener Filter)
-    
-    Generic restoration algorithm that works well for various image types:
-    - Portraits, objects, landscapes, etc.
-    - Different resolutions and orientations
+    Problem 2: Image Restoration using Fourier Transform (Wiener Filter)
     
     Process:
     1. Take original image L
     2. Apply Gaussian blur to get L_b
-    3. Use adaptive Wiener filter in Fourier domain to restore L from L_b
-    4. Apply iterative refinement and advanced post-processing
+    3. Use Wiener filter in Fourier domain to restore L from L_b
     
     Args:
         image_data: Base64 encoded original image L
@@ -407,144 +402,76 @@ def restore_image_handler(image_data):
     if original is None:
         return {'success': False, 'error': 'Invalid image'}
     
-    # Step 1: Apply Gaussian blur to create L_b
-    # Using kernel size 51x51 and sigma=12 for strong visible blur
+    # Step 1: Apply Gaussian blur to create L_b (strong blur)
     ksize = 51
     sigma = 12.0
     blurred = cv2.GaussianBlur(original, (ksize, ksize), sigma)
     
-    # Step 2: Restore image using Enhanced Wiener Filter
-    H, W = original.shape[:2]
+    # Step 2: Restore image using Wiener Filter in Fourier Domain
+    img_h, img_w = original.shape[:2]
     
     # Build the Point Spread Function (PSF) - Gaussian kernel matching the blur
     k1d = cv2.getGaussianKernel(ksize, sigma)
     k2d = k1d @ k1d.T
     k2d = k2d / k2d.sum()  # Normalize
     
-    # Pad PSF to image size (centered)
-    psf = np.zeros((H, W), dtype=np.float32)
+    # Pad PSF to image size
+    psf_padded = np.zeros((img_h, img_w), dtype=np.float64)
     kh, kw = k2d.shape
-    start_h = (H - kh) // 2
-    start_w = (W - kw) // 2
-    psf[start_h:start_h+kh, start_w:start_w+kw] = k2d
+    psf_padded[:kh, :kw] = k2d
     
-    # Shift PSF to corner for FFT
-    psf = np.fft.ifftshift(psf)
-    H_fft = np.fft.fft2(psf)
+    # Shift PSF so center is at (0,0) for proper FFT
+    psf_padded = np.roll(psf_padded, -kh//2, axis=0)
+    psf_padded = np.roll(psf_padded, -kw//2, axis=1)
     
-    # Adaptive regularization based on image characteristics
-    # Analyze image to determine optimal K value
-    gray = cv2.cvtColor(blurred, cv2.COLOR_BGR2GRAY)
-    image_variance = np.var(gray.astype(np.float32))
+    # FFT of PSF
+    PSF = np.fft.fft2(psf_padded)
+    PSF_conj = np.conj(PSF)
+    PSF_mag_sq = np.abs(PSF) ** 2
     
-    # For stronger blur, use more aggressive restoration with lower K
-    base_K = 0.001  # Lower base for stronger restoration
-    if image_variance > 1000:  # High detail image
-        K = base_K * 0.3  # Very aggressive restoration
-    elif image_variance > 500:  # Medium detail
-        K = base_K * 0.5  # Aggressive restoration
-    else:  # Low detail/smooth image
-        K = base_K  # Balanced
+    # Wiener filter parameter (noise-to-signal ratio estimate)
+    # Lower K = more aggressive restoration but more noise
+    # Higher K = less restoration but cleaner
+    K = 0.01  # Good balance for strong blur
     
-    # Compute H* (complex conjugate) and |H|^2
-    H_conj = np.conj(H_fft)
-    H_mag_sq = np.abs(H_fft) ** 2
-    
-    # Enhanced Wiener Filter with frequency-dependent regularization
-    # Lower frequencies get less regularization for better restoration
-    freq_weights = np.ones_like(H_mag_sq)
-    center_h, center_w = H // 2, W // 2
-    y_coords, x_coords = np.ogrid[:H, :W]
-    dist_from_center = np.sqrt((x_coords - center_w)**2 + (y_coords - center_h)**2)
-    max_dist = np.sqrt(center_h**2 + center_w**2)
-    freq_weights = 1.0 + 0.5 * (dist_from_center / max_dist)  # More regularization at high frequencies
-    
-    # Process each color channel separately
+    # Process each color channel
     restored_channels = []
-    
     for c in range(3):
-        blurred_channel = blurred[:, :, c].astype(np.float32)
+        # Get blurred channel
+        blurred_channel = blurred[:, :, c].astype(np.float64)
         
         # FFT of blurred image
-        G_fft = np.fft.fft2(blurred_channel)
+        G = np.fft.fft2(blurred_channel)
         
-        # Enhanced Wiener Filter with frequency-dependent regularization
-        denominator = H_mag_sq + K * freq_weights
-        denominator = np.maximum(denominator, 1e-10)  # Avoid division by very small values
-        F_estimated_fft = (H_conj / denominator) * G_fft
+        # Wiener Filter: F = (PSF* / (|PSF|^2 + K)) * G
+        wiener_filter = PSF_conj / (PSF_mag_sq + K)
+        F_restored = wiener_filter * G
         
-        # Inverse FFT
-        f_estimated = np.fft.ifft2(F_estimated_fft)
-        f_estimated = np.real(f_estimated)
+        # Inverse FFT to get restored channel
+        restored_channel = np.fft.ifft2(F_restored)
+        restored_channel = np.real(restored_channel)
         
         # Clip to valid range
-        f_estimated = np.clip(f_estimated, 0, 255).astype(np.uint8)
-        restored_channels.append(f_estimated)
+        restored_channel = np.clip(restored_channel, 0, 255)
+        restored_channels.append(restored_channel.astype(np.uint8))
     
     # Merge channels
     restored = cv2.merge(restored_channels)
     
-    # Step 3: Iterative refinement using Richardson-Lucy (carefully applied)
-    # Only apply if it improves the result
-    restored_float = restored.astype(np.float32)
-    
-    # Apply 8 iterations of RL deconvolution for better restoration of strong blur
-    for iteration in range(8):
-        restored_channels_float = []
-        for c in range(3):
-            channel = restored_float[:, :, c]
-            blurred_channel = blurred[:, :, c].astype(np.float32)
-            
-            # Convolve estimate with PSF
-            estimate_blurred = cv2.filter2D(channel, -1, k2d)
-            estimate_blurred = np.clip(estimate_blurred, 0.1, 255)  # Avoid division by zero
-            
-            # Compute ratio
-            ratio = blurred_channel / estimate_blurred
-            
-            # Convolve with flipped PSF
-            k2d_flipped = np.flip(np.flip(k2d, 0), 1)
-            correction = cv2.filter2D(ratio, -1, k2d_flipped)
-            
-            # Adaptive damping - start aggressive, become conservative
-            damping = 0.85 - (iteration * 0.05)  # 0.85 -> 0.50 over iterations
-            damping = max(0.5, damping)
-            channel_updated = channel * (1 - damping + damping * correction)
-            channel_updated = np.clip(channel_updated, 0, 255)
-            restored_channels_float.append(channel_updated)
-        
-        restored_float = cv2.merge(restored_channels_float)
-    
-    restored = restored_float.astype(np.uint8)
-    
-    # Step 4: Advanced post-processing
-    # Convert to LAB color space for better processing
+    # Step 3: Post-processing - Unsharp Masking for edge enhancement
+    # Convert to LAB for better sharpening
     restored_lab = cv2.cvtColor(restored, cv2.COLOR_BGR2LAB)
     l_channel, a_channel, b_channel = cv2.split(restored_lab)
     
-    # Stronger adaptive unsharp masking on L channel for better restoration
-    gaussian_l = cv2.GaussianBlur(l_channel, (3, 3), 1.0)
-    contrast = cv2.absdiff(l_channel.astype(np.float32), gaussian_l.astype(np.float32))
+    # Unsharp mask on L channel
+    gaussian = cv2.GaussianBlur(l_channel, (0, 0), 2.0)
+    l_sharpened = cv2.addWeighted(l_channel, 1.5, gaussian, -0.5, 0)
     
-    # More aggressive sharpening for stronger blur restoration
-    strength_map = np.clip(contrast / 30.0, 0.3, 2.0)  # Increased max strength
-    l_sharpened = l_channel.astype(np.float32) + (l_channel.astype(np.float32) - gaussian_l.astype(np.float32)) * strength_map
-    l_sharpened = np.clip(l_sharpened, 0, 255).astype(np.uint8)
-    
-    # Merge LAB channels
+    # Merge and convert back
     restored_lab = cv2.merge([l_sharpened, a_channel, b_channel])
     restored = cv2.cvtColor(restored_lab, cv2.COLOR_LAB2BGR)
     
-    # Additional sharpening pass using Laplacian kernel
-    kernel = np.array([[-1, -1, -1],
-                       [-1,  9, -1],
-                       [-1, -1, -1]]) * 0.1  # Subtle sharpening
-    restored = cv2.filter2D(restored, -1, kernel)
-    
-    # Light edge-preserving smoothing to reduce artifacts
-    restored = cv2.bilateralFilter(restored, 3, 30, 30)
-    
-    # Final clipping
+    # Ensure valid range
     restored = np.clip(restored, 0, 255).astype(np.uint8)
     
     return {
