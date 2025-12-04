@@ -33,12 +33,9 @@ COPY . .
 # Create necessary directories
 RUN mkdir -p uploads static/outputs
 
-# Copy and set permissions for Python startup script
-COPY start.py /app/start.py
-RUN chmod +x /app/start.py
-
-# Expose port (Railway will override with PORT env var)
+# Expose port
 EXPOSE 8080
 
-# Use Python script to handle PORT variable (Railway can't pre-validate Python)
-CMD ["python", "/app/start.py"]
+# Use hardcoded port - Railway will route traffic to it automatically
+# Railway's proxy handles port mapping, so we can use a fixed port
+CMD ["gunicorn", "app:app", "--bind", "0.0.0.0:8080", "--workers", "2", "--threads", "2", "--timeout", "120"]
