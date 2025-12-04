@@ -105,6 +105,11 @@ def register_core_routes(app):
     def modules():
         """Module selection page after authentication"""
         return render_template('modules.html')
+    
+    @app.route('/evaluation')
+    def evaluation():
+        """Public evaluation page - no authentication required"""
+        return render_template('evaluation.html')
 
 def register_modules(app):
     """Register all module blueprints"""

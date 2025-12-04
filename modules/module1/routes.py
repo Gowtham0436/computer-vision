@@ -5,7 +5,7 @@ Routes and blueprint definition
 
 from flask import Blueprint, render_template, request, jsonify
 from core.decorators import login_required
-from .handlers import calculate_roi_dimensions, calculate_points_dimensions, calculate_evaluation_metrics, calculate_evaluation_metrics
+from .handlers import calculate_roi_dimensions, calculate_points_dimensions, calculate_evaluation_metrics
 
 # Create blueprint
 module1_bp = Blueprint(
@@ -73,10 +73,10 @@ def api_calculate_points():
         return jsonify({'success': False, 'error': str(e)})
 
 @module1_bp.route('/api/evaluation', methods=['GET'])
-@login_required
 def api_evaluation():
     """
     API endpoint to get evaluation metrics for all objects
+    Public endpoint - no authentication required for evaluation viewing
     """
     try:
         results = calculate_evaluation_metrics()
