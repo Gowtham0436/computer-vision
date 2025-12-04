@@ -10,6 +10,7 @@ import numpy as np
 import math
 import random
 import dataclasses
+import logging
 from typing import List, Tuple, Sequence, Iterable
 from core.utils import decode_base64_image, encode_image_to_base64
 
@@ -108,23 +109,36 @@ def stitch_images_with_reference_handler(images_data, reference_image_data=None)
     Returns:
         Dictionary with stitched image, SIFT results, reference comparison, and info
     """
+    import logging
+    logger = logging.getLogger(__name__)
+    
     if not images_data or len(images_data) < 2:
         return {'success': False, 'error': 'Need at least 2 images for stitching'}
     
+    # Limit number of images to prevent timeout
+    if len(images_data) > 8:
+        logger.warning("Too many images (%d), limiting to 8", len(images_data))
+        images_data = images_data[:8]
+    
     # Decode all images
     images = []
-    for img_data in images_data:
-        img = decode_base64_image(img_data)
-        if img is None:
-            return {'success': False, 'error': 'Invalid image data'}
-        images.append(img)
+    for idx, img_data in enumerate(images_data):
+        try:
+            img = decode_base64_image(img_data)
+            if img is None:
+                return {'success': False, 'error': f'Invalid image data at index {idx}'}
+            images.append(img)
+        except Exception as e:
+            logger.error("Error decoding image %d: %s", idx, str(e))
+            return {'success': False, 'error': f'Error decoding image {idx}: {str(e)}'}
     
     if len(images) < 2:
         return {'success': False, 'error': 'Need at least 2 valid images'}
     
-    # Resize images if too large (to avoid memory issues)
-    max_width = 1800
-    resize_width = 960  # For SIFT processing
+    # Resize images if too large (to avoid memory issues and timeout)
+    # Reduced sizes for Railway deployment to prevent timeout
+    max_width = 1200  # Reduced from 1800
+    resize_width = 640  # Reduced from 960 for faster SIFT processing
     resized_images = []
     resized_for_sift = []
     for img in images:
@@ -147,7 +161,14 @@ def stitch_images_with_reference_handler(images_data, reference_image_data=None)
         resized_for_sift.append(sift_img)
     
     # Use OpenCV Stitcher
-    opencv_success, stitched_opencv = stitch_images_opencv(resized_images)
+    try:
+        logger.info("Starting OpenCV stitching...")
+        opencv_success, stitched_opencv = stitch_images_opencv(resized_images)
+        logger.info("OpenCV stitching completed: success=%s", opencv_success)
+    except Exception as e:
+        logger.error("OpenCV stitching error: %s", str(e))
+        opencv_success = False
+        stitched_opencv = None
     
     result = {
         'success': opencv_success,
@@ -156,22 +177,24 @@ def stitch_images_with_reference_handler(images_data, reference_image_data=None)
     }
     
     # SIFT Feature Extraction and Matching (automatically run on consecutive pairs)
+    # Limit to first 3 pairs to prevent timeout on Railway
     sift_results = []
     sift_matches_images = []
     sift_opencv_matches_images = []
     
     if len(resized_for_sift) >= 2:
-        # Initialize SIFT detector
+        # Initialize SIFT detector with reduced parameters for faster processing
         siftr = SIFTFromScratch(
-            num_octaves=4,
+            num_octaves=3,  # Reduced from 4
             num_scales=3,
             sigma=1.6,
             contrast_threshold=0.04,
             edge_threshold=10.0,
         )
         
-        # Process each consecutive pair
-        for i in range(len(resized_for_sift) - 1):
+        # Process each consecutive pair (limit to first 3 pairs to prevent timeout)
+        max_pairs = min(3, len(resized_for_sift) - 1)
+        for i in range(max_pairs):
             img_a = resized_for_sift[i]
             img_b = resized_for_sift[i + 1]
             
@@ -190,10 +213,10 @@ def stitch_images_with_reference_handler(images_data, reference_image_data=None)
                 custom_pts_a = keypoints_to_array(custom_kp_a)
                 custom_pts_b = keypoints_to_array(custom_kp_b)
                 
-                # RANSAC
+                # RANSAC (reduced iterations for faster processing)
                 custom_H, custom_inliers = ransac_homography(
                     custom_pts_a, custom_pts_b, custom_matches,
-                    iterations=2000, threshold=3.0
+                    iterations=1000, threshold=3.0  # Reduced from 2000
                 )
                 
                 # Draw matches - show all matches if no inliers, otherwise show inliers
@@ -238,7 +261,7 @@ def stitch_images_with_reference_handler(images_data, reference_image_data=None)
                     ref_pts_b = np.array([kp.pt for kp in ref_kp_b], dtype=np.float32)
                     ref_H, ref_inliers = ransac_homography(
                         ref_pts_a, ref_pts_b, ref_matches,
-                        iterations=2000, threshold=3.0
+                        iterations=1000, threshold=3.0  # Reduced from 2000
                     )
                     
                     opencv_inliers = len(ref_inliers) if ref_inliers else 0
