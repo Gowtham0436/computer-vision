@@ -98,7 +98,7 @@ def decode_base64_image(image_data, auto_resize=True):
 
 def encode_image_to_base64(image, format='.jpg', quality=JPEG_QUALITY):
     """
-    Encode OpenCV image to base64 string with JPEG compression for smaller size.
+    Encode OpenCV image to base64 data URL with JPEG compression for smaller size.
     
     Args:
         image: OpenCV image (numpy.ndarray)
@@ -106,7 +106,7 @@ def encode_image_to_base64(image, format='.jpg', quality=JPEG_QUALITY):
         quality: JPEG quality (0-100, default: 85)
         
     Returns:
-        str: Base64 encoded image string (without data URL prefix) or None if failed
+        str: Base64 encoded data URL (data:image/jpeg;base64,...) or None if failed
     """
     try:
         if image is None:
@@ -119,17 +119,21 @@ def encode_image_to_base64(image, format='.jpg', quality=JPEG_QUALITY):
         # Use JPEG for smaller file sizes (critical for deployment)
         if format == '.jpg' or format == '.jpeg':
             encode_params = [cv2.IMWRITE_JPEG_QUALITY, quality]
+            mime_type = 'image/jpeg'
         elif format == '.png':
             encode_params = [cv2.IMWRITE_PNG_COMPRESSION, 6]  # 0-9, higher = more compression
+            mime_type = 'image/png'
         else:
             encode_params = []
+            mime_type = 'image/png'
         
         _, buffer = cv2.imencode(format, image, encode_params)
         if buffer is None:
             print("Error: cv2.imencode returned None")
             return None
         img_base64 = base64.b64encode(buffer).decode('utf-8')
-        return img_base64
+        # Return full data URL for direct use in img src
+        return f'data:{mime_type};base64,{img_base64}'
     except Exception as e:
         print(f"Error encoding image: {type(e).__name__}: {e}")
         import traceback
@@ -138,7 +142,7 @@ def encode_image_to_base64(image, format='.jpg', quality=JPEG_QUALITY):
 
 def encode_image_to_base64_png(image):
     """
-    Encode image as PNG (for cases where quality is critical like masks)
+    Encode image as PNG data URL (for cases where quality is critical like masks)
     """
     return encode_image_to_base64(image, format='.png')
 
