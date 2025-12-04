@@ -77,6 +77,134 @@
         font-size: 0.9em;
         margin-top: 10px;
     }
+    
+    .evaluation-section {
+        margin-top: 60px;
+        background: #f8f9fa;
+        padding: 30px;
+        border-radius: 15px;
+        box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+    }
+    
+    .evaluation-section h2 {
+        color: #667eea;
+        margin-bottom: 20px;
+        text-align: center;
+    }
+    
+    .evaluation-table-container {
+        overflow-x: auto;
+        margin-top: 20px;
+    }
+    
+    .evaluation-table {
+        width: 100%;
+        border-collapse: collapse;
+        background: white;
+        border-radius: 10px;
+        overflow: hidden;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    
+    .evaluation-table thead {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+    }
+    
+    .evaluation-table th {
+        padding: 15px;
+        text-align: left;
+        font-weight: 600;
+        font-size: 0.95em;
+    }
+    
+    .evaluation-table td {
+        padding: 12px 15px;
+        border-bottom: 1px solid #e0e0e0;
+        font-size: 0.9em;
+    }
+    
+    .evaluation-table tbody tr:hover {
+        background: #f5f5f5;
+    }
+    
+    .evaluation-table tbody tr:last-child td {
+        border-bottom: none;
+    }
+    
+    .evaluation-image {
+        width: 100px;
+        height: 75px;
+        object-fit: cover;
+        border-radius: 5px;
+        cursor: pointer;
+        transition: transform 0.2s;
+    }
+    
+    .evaluation-image:hover {
+        transform: scale(1.1);
+    }
+    
+    .accuracy-good {
+        color: #28a745;
+        font-weight: 600;
+    }
+    
+    .accuracy-medium {
+        color: #ffc107;
+        font-weight: 600;
+    }
+    
+    .accuracy-poor {
+        color: #dc3545;
+        font-weight: 600;
+    }
+    
+    .loading {
+        text-align: center;
+        padding: 40px;
+        color: #667eea;
+    }
+    
+    .no-data {
+        text-align: center;
+        padding: 40px;
+        color: #6c757d;
+    }
+    
+    .image-modal {
+        display: none;
+        position: fixed;
+        z-index: 1000;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0,0,0,0.9);
+        cursor: pointer;
+    }
+    
+    .image-modal-content {
+        margin: auto;
+        display: block;
+        width: 90%;
+        max-width: 1200px;
+        margin-top: 50px;
+    }
+    
+    .image-modal-close {
+        position: absolute;
+        top: 15px;
+        right: 35px;
+        color: #f1f1f1;
+        font-size: 40px;
+        font-weight: bold;
+        cursor: pointer;
+    }
+    
+    .image-modal-close:hover {
+        color: #bbb;
+    }
 </style>
 {% endblock %}
 
@@ -139,6 +267,43 @@
             <p style="font-size: 0.95em; margin-top: 15px;">Calibrated/Uncalibrated Stereo, Pose & Hand Tracking</p>
         </div>
     </div>
+    
+    <!-- Evaluation Section -->
+    <div class="evaluation-section">
+        <h2>Module 1 ROI Calculation - Evaluation Results</h2>
+        <p style="text-align: center; color: #666; margin-bottom: 20px;">
+            Evaluation across 10 different objects showing accuracy metrics
+        </p>
+        <div class="evaluation-table-container">
+            <div id="evaluationLoading" class="loading">Loading evaluation data...</div>
+            <div id="evaluationNoData" class="no-data" style="display: none;">
+                No evaluation data available. Please update the evaluation data file.
+            </div>
+            <table id="evaluationTable" class="evaluation-table" style="display: none;">
+                <thead>
+                    <tr>
+                        <th>Object</th>
+                        <th>Physical Width (mm)</th>
+                        <th>Physical Height (mm)</th>
+                        <th>Measured Width (mm)</th>
+                        <th>Measured Height (mm)</th>
+                        <th>Width Error (%)</th>
+                        <th>Height Error (%)</th>
+                        <th>Avg Accuracy (%)</th>
+                        <th>Image</th>
+                    </tr>
+                </thead>
+                <tbody id="evaluationTableBody">
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Image Modal -->
+<div id="imageModal" class="image-modal">
+    <span class="image-modal-close">&times;</span>
+    <img class="image-modal-content" id="modalImage">
 </div>
 {% endblock %}
 
@@ -156,5 +321,97 @@ async function logout() {
     await fetch('/logout');
     window.location.href = '/';
 }
+
+// Evaluation table functionality
+async function loadEvaluationData() {
+    try {
+        const response = await fetch('/module1/api/evaluation');
+        const result = await response.json();
+        
+        document.getElementById('evaluationLoading').style.display = 'none';
+        
+        if (result.success && result.data && result.data.length > 0) {
+            displayEvaluationTable(result.data);
+        } else {
+            document.getElementById('evaluationNoData').style.display = 'block';
+        }
+    } catch (error) {
+        console.error('Error loading evaluation data:', error);
+        document.getElementById('evaluationLoading').style.display = 'none';
+        document.getElementById('evaluationNoData').style.display = 'block';
+    }
+}
+
+function displayEvaluationTable(data) {
+    const tableBody = document.getElementById('evaluationTableBody');
+    tableBody.innerHTML = '';
+    
+    data.forEach(obj => {
+        const row = document.createElement('tr');
+        
+        // Determine accuracy class
+        let accuracyClass = 'accuracy-poor';
+        if (obj.avg_accuracy >= 90) {
+            accuracyClass = 'accuracy-good';
+        } else if (obj.avg_accuracy >= 75) {
+            accuracyClass = 'accuracy-medium';
+        }
+        
+        // Image cell
+        let imageCell = '<td>-</td>';
+        if (obj.image_path) {
+            imageCell = `<td>
+                <img src="/static/${obj.image_path}" 
+                     alt="${obj.object_name}" 
+                     class="evaluation-image"
+                     onclick="openImageModal('/static/${obj.image_path}')">
+            </td>`;
+        }
+        
+        row.innerHTML = `
+            <td><strong>${obj.object_name}</strong></td>
+            <td>${obj.physical_width_mm}</td>
+            <td>${obj.physical_height_mm}</td>
+            <td>${obj.measured_width_mm}</td>
+            <td>${obj.measured_height_mm}</td>
+            <td>${obj.width_error_pct.toFixed(2)}%</td>
+            <td>${obj.height_error_pct.toFixed(2)}%</td>
+            <td class="${accuracyClass}">${obj.avg_accuracy.toFixed(2)}%</td>
+            ${imageCell}
+        `;
+        
+        tableBody.appendChild(row);
+    });
+    
+    document.getElementById('evaluationTable').style.display = 'table';
+}
+
+function openImageModal(imagePath) {
+    const modal = document.getElementById('imageModal');
+    const modalImg = document.getElementById('modalImage');
+    modal.style.display = 'block';
+    modalImg.src = imagePath;
+}
+
+function closeImageModal() {
+    document.getElementById('imageModal').style.display = 'none';
+}
+
+// Close modal when clicking outside image
+window.onclick = function(event) {
+    const modal = document.getElementById('imageModal');
+    if (event.target == modal) {
+        closeImageModal();
+    }
+}
+
+// Close modal with X button
+const closeBtn = document.querySelector('.image-modal-close');
+if (closeBtn) {
+    closeBtn.onclick = closeImageModal;
+}
+
+// Load evaluation data when page loads
+loadEvaluationData();
 </script>
 {% endblock %}

@@ -185,7 +185,7 @@ function onMouseUp(e) {
             }
         } else {
             // Capture template for markerless tracking
-            captureTemplate(selectionRect);
+        captureTemplate(selectionRect);
             updateStatus('Region selected. Tracking started.');
         }
         

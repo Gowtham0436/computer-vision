@@ -7,6 +7,7 @@ import cv2
 import numpy as np
 from datetime import datetime
 from core.utils import decode_base64_image, encode_image_to_base64, convert_mm_to_inch
+from .evaluation_data import EVALUATION_DATA
 
 def calculate_roi_dimensions(image_data, roi, params):
     """
@@ -166,3 +167,61 @@ def calculate_points_dimensions(image_data, point1, point2, params):
         'height_inches': round(height_inches, 2),
         'annotated_image': annotated_image
     }
+
+def calculate_evaluation_metrics():
+    """
+    Calculate evaluation metrics for all objects in EVALUATION_DATA
+    
+    Returns:
+        List of dictionaries with evaluation metrics for each object
+    """
+    results = []
+    
+    for obj_data in EVALUATION_DATA:
+        # Skip objects with no data
+        if (obj_data['physical_width_mm'] == 0.0 and 
+            obj_data['physical_height_mm'] == 0.0):
+            continue
+            
+        physical_w = obj_data['physical_width_mm']
+        physical_h = obj_data['physical_height_mm']
+        measured_w = obj_data['measured_width_mm']
+        measured_h = obj_data['measured_height_mm']
+        
+        # Calculate absolute errors
+        width_error_mm = abs(measured_w - physical_w)
+        height_error_mm = abs(measured_h - physical_h)
+        
+        # Calculate percentage errors
+        width_error_pct = (width_error_mm / physical_w * 100) if physical_w > 0 else 0
+        height_error_pct = (height_error_mm / physical_h * 100) if physical_h > 0 else 0
+        
+        # Calculate accuracy (100% - error%)
+        width_accuracy = max(0, 100 - width_error_pct)
+        height_accuracy = max(0, 100 - height_error_pct)
+        
+        # Average accuracy
+        avg_accuracy = (width_accuracy + height_accuracy) / 2
+        
+        # Calculate average error percentage
+        avg_error_pct = (width_error_pct + height_error_pct) / 2
+        
+        results.append({
+            'object_name': obj_data['object_name'],
+            'physical_width_mm': round(physical_w, 2),
+            'physical_height_mm': round(physical_h, 2),
+            'measured_width_mm': round(measured_w, 2),
+            'measured_height_mm': round(measured_h, 2),
+            'width_error_mm': round(width_error_mm, 2),
+            'height_error_mm': round(height_error_mm, 2),
+            'width_error_pct': round(width_error_pct, 2),
+            'height_error_pct': round(height_error_pct, 2),
+            'width_accuracy': round(width_accuracy, 2),
+            'height_accuracy': round(height_accuracy, 2),
+            'avg_accuracy': round(avg_accuracy, 2),
+            'avg_error_pct': round(avg_error_pct, 2),
+            'image_path': obj_data['image_path'],
+            'notes': obj_data.get('notes', '')
+        })
+    
+    return results

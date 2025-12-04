@@ -1,30 +1,34 @@
-# Use Python 3.11 slim image with Debian Bookworm (stable)
+# ============================================
+# Railway Deployment - Computer Vision App
+# ============================================
+
+# Base image: Python 3.11 on Debian Bookworm (stable)
 FROM python:3.11-slim-bookworm
 
-# Set environment variables
+# Environment variables
 ENV PYTHONUNBUFFERED=1 \
     DEBIAN_FRONTEND=noninteractive \
+    PYTHONDONTWRITEBYTECODE=1 \
     OPENCV_IO_ENABLE_OPENEXR=0 \
     QT_QPA_PLATFORM=offscreen
 
-# Install system dependencies required for OpenCV and MediaPipe
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libgl1-mesa-glx \
-    libglib2.0-0 \
-    libsm6 \
-    libxext6 \
-    libxrender-dev \
-    libgomp1 \
-    && rm -rf /var/lib/apt/lists/*
+# Install system dependencies for OpenCV and MediaPipe
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        libgl1-mesa-glx \
+        libglib2.0-0 \
+        libsm6 \
+        libxext6 \
+        libxrender-dev \
+        libgomp1 && \
+    rm -rf /var/lib/apt/lists/*
 
 # Set working directory
 WORKDIR /app
 
-# Copy requirements first for better Docker layer caching
+# Copy and install Python dependencies
 COPY requirements.txt .
-
-# Install Python dependencies
-RUN pip install --no-cache-dir --upgrade pip && \
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
     pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
@@ -33,9 +37,10 @@ COPY . .
 # Create necessary directories
 RUN mkdir -p uploads static/outputs
 
-# Expose port
+# Expose port (Railway will route traffic to this port)
 EXPOSE 8080
 
-# Use hardcoded port - Railway will route traffic to it automatically
-# Railway's proxy handles port mapping, so we can use a fixed port
+# Start the application
+# Note: Railway's proxy automatically routes traffic to port 8080
 CMD ["gunicorn", "app:app", "--bind", "0.0.0.0:8080", "--workers", "2", "--threads", "2", "--timeout", "120"]
+

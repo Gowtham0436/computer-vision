@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Real-time Pose Estimation and Hand Tracking</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root { --accent: 99 102 241; }
+    html, body { height: 100%; font-family: Inter, ui-sans-serif, system-ui; }
+    .btn { @apply inline-flex items-center gap-2 px-4 py-2 rounded-xl shadow-sm text-sm font-medium transition active:scale-[.99]; }
+    .btn-primary { @apply bg-indigo-600 text-white hover:bg-indigo-700; }
+    .btn-ghost { @apply bg-white border border-gray-300 text-gray-700 hover:bg-gray-50; }
+    .btn-success { @apply bg-green-600 text-white hover:bg-green-700; }
+    .chip { @apply inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700; }
+    .card { @apply bg-white rounded-2xl shadow-lg p-5; }
+    .label { @apply block text-xs uppercase tracking-wide text-gray-600 mb-1; }
+    .field { @apply w-full border rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500/50; }
+    canvas { background: #0b0b0b; border-radius: 18px; }
+    .status-indicator { @apply inline-block w-2 h-2 rounded-full mr-2; }
+    .status-active { @apply bg-green-500; }
+    .status-inactive { @apply bg-gray-400; }
+  </style>
+</head>
+<body class="min-h-screen bg-gradient-to-b from-indigo-50/60 to-white">
+  <header class="relative overflow-hidden">
+    <div class="pointer-events-none absolute inset-0 bg-[radial-gradient(1200px_600px_at_20%_-10%,rgba(99,102,241,.15),transparent)]"></div>
+    <div class="max-w-7xl mx-auto px-6 py-8 flex items-center justify-between">
+      <div>
+        <h1 class="text-2xl md:text-3xl font-semibold">Real-time Pose Estimation and Hand Tracking</h1>
+        <p class="text-gray-600">CSc 8830 • Assignment 7 • Task 3</p>
+      </div>
+      <div class="hidden md:flex items-center gap-2">
+        <span class="chip">MediaPipe</span>
+        <span class="chip">Real-time</span>
+        <span class="chip">CSV Export</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-6 pb-16 grid grid-cols-1 xl:grid-cols-3 gap-6">
+    <!-- Left column: controls -->
+    <section class="space-y-6 xl:col-span-1">
+      <!-- Status -->
+      <div class="card space-y-4">
+        <h2 class="font-semibold">1) Status</h2>
+        <div class="space-y-2 text-sm">
+          <div class="flex items-center">
+            <span class="status-indicator status-inactive" id="cameraStatus"></span>
+            <span>Camera: <span id="cameraStatusText">Not started</span></span>
+          </div>
+          <div class="flex items-center">
+            <span class="status-indicator status-inactive" id="poseStatus"></span>
+            <span>Pose Detection: <span id="poseStatusText">Inactive</span></span>
+          </div>
+          <div class="flex items-center">
+            <span class="status-indicator status-inactive" id="handStatus"></span>
+            <span>Hand Tracking: <span id="handStatusText">Inactive</span></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Controls -->
+      <div class="card space-y-4">
+        <h2 class="font-semibold">2) Controls</h2>
+        <div class="space-y-2">
+          <button id="btnStart" class="btn btn-primary w-full">Start Camera</button>
+          <button id="btnStop" class="btn btn-ghost w-full" disabled>Stop Camera</button>
+        </div>
+        <div class="space-y-2">
+          <label class="flex items-center gap-2">
+            <input type="checkbox" id="enablePose" checked class="rounded" />
+            <span>Enable Pose Estimation</span>
+          </label>
+          <label class="flex items-center gap-2">
+            <input type="checkbox" id="enableHands" checked class="rounded" />
+            <span>Enable Hand Tracking</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Data Recording -->
+      <div class="card space-y-4">
+        <h2 class="font-semibold">3) Data Recording</h2>
+        <div class="space-y-2">
+          <button id="btnStartRecording" class="btn btn-success w-full" disabled>Start Recording</button>
+          <button id="btnStopRecording" class="btn btn-ghost w-full" disabled>Stop Recording</button>
+          <button id="btnExportCSV" class="btn btn-primary w-full" disabled>Export to CSV</button>
+        </div>
+        <div class="text-sm text-gray-600">
+          <div>Frames recorded: <span id="frameCount">0</span></div>
+          <div>Recording time: <span id="recordingTime">0.0</span>s</div>
+        </div>
+      </div>
+
+      <!-- Settings -->
+      <div class="card space-y-4">
+        <h2 class="font-semibold">4) Settings</h2>
+        <div class="space-y-3">
+          <div>
+            <label class="label" for="minDetectionConfidence">Min Detection Confidence</label>
+            <input type="range" id="minDetectionConfidence" min="0" max="1" step="0.01" value="0.5" class="w-full" />
+            <div class="text-xs text-gray-500">Value: <span id="minDetectionConfidenceValue">0.5</span></div>
+          </div>
+          <div>
+            <label class="label" for="minTrackingConfidence">Min Tracking Confidence</label>
+            <input type="range" id="minTrackingConfidence" min="0" max="1" step="0.01" value="0.5" class="w-full" />
+            <div class="text-xs text-gray-500">Value: <span id="minTrackingConfidenceValue">0.5</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Info -->
+      <div class="card space-y-3">
+        <h2 class="font-semibold">5) Information</h2>
+        <p class="text-xs text-gray-600">
+          This system uses MediaPipe for real-time pose estimation and hand tracking. 
+          Data is recorded frame-by-frame and can be exported to CSV format.
+        </p>
+        <p class="text-xs text-gray-600">
+          <strong>Note:</strong> Requires camera access. Works best in Chrome/Edge browsers.
+        </p>
+      </div>
+    </section>
+
+    <!-- Right column: video canvas -->
+    <section class="xl:col-span-2 space-y-4">
+      <div class="card">
+        <div class="flex items-center justify-between mb-3">
+          <div class="text-sm text-gray-600">Live Camera Feed with Pose and Hand Tracking</div>
+          <div class="text-xs text-gray-500">FPS: <span id="fps">0</span></div>
+        </div>
+        <div class="relative">
+          <video id="video" class="hidden" autoplay playsinline></video>
+          <canvas id="canvas" class="w-full" width="640" height="480"></canvas>
+        </div>
+      </div>
+      <p class="text-xs text-gray-500">
+        Pose landmarks are shown in <span class="text-red-600">red</span>, hand landmarks in <span class="text-green-600">green</span>.
+        All data is recorded frame-by-frame when recording is active.
+      </p>
+    </section>
+  </main>
+
+  <script>
+  // Wait for MediaPipe to load
+  let mediapipeReady = false;
+  
+  function checkMediaPipeReady() {
+    if (typeof Pose !== 'undefined' && typeof Hands !== 'undefined' && 
+        typeof Camera !== 'undefined' && typeof drawConnectors !== 'undefined' && 
+        typeof drawLandmarks !== 'undefined') {
+      mediapipeReady = true;
+      initApp();
+    } else {
+      setTimeout(checkMediaPipeReady, 100);
+    }
+  }
+
+  // State
+  const video = document.getElementById('video');
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
+  
+  let pose = null;
+  let hands = null;
+  let camera = null;
+  let isRecording = false;
+  let recordedData = [];
+  let recordingStartTime = 0;
+  let frameCount = 0;
+  let lastFrameTime = 0;
+  let fps = 0;
+  let fpsCounter = 0;
+  let lastFpsUpdate = Date.now();
+
+  const $ = (id) => document.getElementById(id);
+  const els = {
+    btnStart: $('btnStart'),
+    btnStop: $('btnStop'),
+    btnStartRecording: $('btnStartRecording'),
+    btnStopRecording: $('btnStopRecording'),
+    btnExportCSV: $('btnExportCSV'),
+    enablePose: $('enablePose'),
+    enableHands: $('enableHands'),
+    minDetectionConfidence: $('minDetectionConfidence'),
+    minTrackingConfidence: $('minTrackingConfidence'),
+    minDetectionConfidenceValue: $('minDetectionConfidenceValue'),
+    minTrackingConfidenceValue: $('minTrackingConfidenceValue'),
+    cameraStatus: $('cameraStatus'),
+    cameraStatusText: $('cameraStatusText'),
+    poseStatus: $('poseStatus'),
+    poseStatusText: $('poseStatusText'),
+    handStatus: $('handStatus'),
+    handStatusText: $('handStatusText'),
+    frameCount: $('frameCount'),
+    recordingTime: $('recordingTime'),
+    fps: $('fps')
+  };
+
+  // Initialize MediaPipe Pose
+  function initPose() {
+    pose = new Pose({
+      locateFile: (file) => {
+        return `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`;
+      }
+    });
+    
+    pose.setOptions({
+      modelComplexity: 1,
+      smoothLandmarks: true,
+      enableSegmentation: false,
+      smoothSegmentation: false,
+      minDetectionConfidence: parseFloat(els.minDetectionConfidence.value),
+      minTrackingConfidence: parseFloat(els.minTrackingConfidence.value)
+    });
+
+    pose.onResults(onPoseResults);
+  }
+
+  // Initialize MediaPipe Hands
+  function initHands() {
+    hands = new Hands({
+      locateFile: (file) => {
+        return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+      }
+    });
+
+    hands.setOptions({
+      maxNumHands: 2,
+      modelComplexity: 1,
+      minDetectionConfidence: parseFloat(els.minDetectionConfidence.value),
+      minTrackingConfidence: parseFloat(els.minTrackingConfidence.value)
+    });
+
+    hands.onResults(onHandResults);
+  }
+
+  // Store current frame results
+  let currentPoseResults = null;
+  let currentHandResults = null;
+  let frameImage = null;
+
+  // Process pose results
+  function onPoseResults(results) {
+    fpsCounter++;
+    const now = Date.now();
+    if (now - lastFpsUpdate >= 1000) {
+      els.fps.textContent = fpsCounter.toFixed(1);
+      fpsCounter = 0;
+      lastFpsUpdate = now;
+    }
+
+    currentPoseResults = results;
+    frameImage = results.image;
+    
+    // If hands are also enabled, process hands on same frame
+    if (els.enableHands.checked && hands) {
+      hands.send({ image: results.image });
+    }
+    // Note: Drawing and recording are handled by renderVideoLoop()
+  }
+
+  // Process hand results
+  function onHandResults(results) {
+    currentHandResults = results;
+    if (!frameImage && results.image) {
+      frameImage = results.image;
+    }
+    // Note: Drawing and recording are handled by renderVideoLoop()
+  }
+
+
+  // Track last recorded frame to avoid duplicates
+  let lastRecordedFrame = -1;
+  let lastRecordTime = 0;
+  const RECORD_INTERVAL = 33; // Record approximately every 33ms (~30 FPS)
+
+  // Continuous video rendering loop
+  function renderVideoLoop() {
+    if (camera && video && video.readyState >= 2) {
+      // Draw video frame continuously
+      ctx.save();
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      // Draw video (use MediaPipe processed image if available, otherwise raw video)
+      if (frameImage) {
+        ctx.drawImage(frameImage, 0, 0, canvas.width, canvas.height);
+      } else {
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      }
+      
+      // Draw pose landmarks if available
+      if (els.enablePose.checked && currentPoseResults && currentPoseResults.poseLandmarks) {
+        drawConnectors(ctx, currentPoseResults.poseLandmarks, POSE_CONNECTIONS, { color: '#FF0000', lineWidth: 2 });
+        drawLandmarks(ctx, currentPoseResults.poseLandmarks, { color: '#FF0000', lineWidth: 1, radius: 2 });
+      }
+
+      // Draw hand landmarks if available
+      if (els.enableHands.checked && currentHandResults && currentHandResults.multiHandLandmarks) {
+        currentHandResults.multiHandLandmarks.forEach(landmarks => {
+          drawConnectors(ctx, landmarks, HAND_CONNECTIONS, { color: '#00FF00', lineWidth: 2 });
+          drawLandmarks(ctx, landmarks, { color: '#00FF00', lineWidth: 1, radius: 2 });
+        });
+      }
+      
+      // Record frame data if recording (record at regular intervals)
+      if (isRecording) {
+        const now = Date.now();
+        if (now - lastRecordTime >= RECORD_INTERVAL) {
+          recordFrame(currentPoseResults, currentHandResults);
+          lastRecordTime = now;
+        }
+      }
+      
+      ctx.restore();
+    }
+    
+    if (camera) {
+      requestAnimationFrame(renderVideoLoop);
+    }
+  }
+
+  // Record frame data
+  function recordFrame(poseResults, handResults) {
+    if (!isRecording) return;
+
+    const timestamp = Date.now() - recordingStartTime;
+    const frameData = {
+      timestamp: timestamp,
+      frame: frameCount++,
+      pose: null,
+      hands: []
+    };
+
+    // Record pose data
+    if (poseResults && poseResults.poseLandmarks) {
+      frameData.pose = {
+        landmarks: poseResults.poseLandmarks.map((lm, idx) => ({
+          index: idx,
+          x: lm.x,
+          y: lm.y,
+          z: lm.z || 0,
+          visibility: lm.visibility || 0
+        })),
+        worldLandmarks: poseResults.poseWorldLandmarks ? poseResults.poseWorldLandmarks.map((lm, idx) => ({
+          index: idx,
+          x: lm.x,
+          y: lm.y,
+          z: lm.z
+        })) : null
+      };
+    }
+
+    // Record hand data
+    if (handResults && handResults.multiHandLandmarks) {
+      handResults.multiHandLandmarks.forEach((landmarks, handIdx) => {
+        const handedness = handResults.multiHandedness && handResults.multiHandedness[handIdx] 
+          ? handResults.multiHandedness[handIdx][0].displayName 
+          : 'Unknown';
+        frameData.hands.push({
+          handIndex: handIdx,
+          handedness: handedness,
+          landmarks: landmarks.map((lm, idx) => ({
+            index: idx,
+            x: lm.x,
+            y: lm.y,
+            z: lm.z || 0
+          }))
+        });
+      });
+    }
+
+    recordedData.push(frameData);
+    els.frameCount.textContent = frameCount;
+    els.recordingTime.textContent = (timestamp / 1000).toFixed(1);
+  }
+
+  // POSE_CONNECTIONS and HAND_CONNECTIONS constants
+  const POSE_CONNECTIONS = [
+    [0, 1], [1, 2], [2, 3], [3, 7],
+    [0, 4], [4, 5], [5, 6], [6, 8],
+    [9, 10],
+    [11, 12], [11, 13], [13, 15], [15, 17], [15, 19], [15, 21], [17, 19],
+    [12, 14], [14, 16], [16, 18], [16, 20], [16, 22], [18, 20],
+    [11, 23], [12, 24], [23, 24],
+    [23, 25], [24, 26], [25, 27], [27, 29], [27, 31], [29, 31],
+    [26, 28], [28, 30], [30, 32], [30, 34], [32, 34]
+  ];
+
+  const HAND_CONNECTIONS = [
+    [0, 1], [1, 2], [2, 3], [3, 4],
+    [0, 5], [5, 6], [6, 7], [7, 8],
+    [0, 9], [9, 10], [10, 11], [11, 12],
+    [0, 13], [13, 14], [14, 15], [15, 16],
+    [0, 17], [17, 18], [18, 19], [19, 20],
+    [5, 9], [9, 13], [13, 17]
+  ];
+
+  // Start camera
+  els.btnStart.addEventListener('click', async () => {
+    try {
+      if (els.enablePose.checked) initPose();
+      if (els.enableHands.checked) initHands();
+
+      camera = new Camera(video, {
+        onFrame: async () => {
+          // Process pose first if enabled
+          if (els.enablePose.checked && pose) {
+            await pose.send({ image: video });
+          } 
+          // If only hands enabled (and pose not enabled), process hands
+          else if (els.enableHands.checked && hands && !els.enablePose.checked) {
+            await hands.send({ image: video });
+          }
+        },
+        width: 640,
+        height: 480
+      });
+
+      await camera.start();
+      
+      // Start continuous video rendering
+      renderVideoLoop();
+      
+      els.btnStart.disabled = true;
+      els.btnStop.disabled = false;
+      els.btnStartRecording.disabled = false;
+      els.cameraStatus.classList.remove('status-inactive');
+      els.cameraStatus.classList.add('status-active');
+      els.cameraStatusText.textContent = 'Active';
+      
+      if (els.enablePose.checked) {
+        els.poseStatus.classList.remove('status-inactive');
+        els.poseStatus.classList.add('status-active');
+        els.poseStatusText.textContent = 'Active';
+      }
+      
+      if (els.enableHands.checked) {
+        els.handStatus.classList.remove('status-inactive');
+        els.handStatus.classList.add('status-active');
+        els.handStatusText.textContent = 'Active';
+      }
+
+    } catch (e) {
+      alert('Error starting camera: ' + e.message);
+      console.error(e);
+    }
+  });
+
+  // Stop camera
+  els.btnStop.addEventListener('click', () => {
+    // Stop camera first to stop render loop
+    if (camera) {
+      camera.stop();
+      camera = null;
+    }
+    if (pose) {
+      pose.close();
+      pose = null;
+    }
+    if (hands) {
+      hands.close();
+      hands = null;
+    }
+    
+    // Clear canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    currentPoseResults = null;
+    currentHandResults = null;
+    frameImage = null;
+    
+    els.btnStart.disabled = false;
+    els.btnStop.disabled = true;
+    els.btnStartRecording.disabled = true;
+    els.cameraStatus.classList.remove('status-active');
+    els.cameraStatus.classList.add('status-inactive');
+    els.cameraStatusText.textContent = 'Not started';
+    els.poseStatus.classList.remove('status-active');
+    els.poseStatus.classList.add('status-inactive');
+    els.poseStatusText.textContent = 'Inactive';
+    els.handStatus.classList.remove('status-active');
+    els.handStatus.classList.add('status-inactive');
+    els.handStatusText.textContent = 'Inactive';
+  });
+
+  // Start recording
+  els.btnStartRecording.addEventListener('click', () => {
+    isRecording = true;
+    recordedData = [];
+    frameCount = 0;
+    lastRecordedFrame = -1;
+    lastRecordTime = 0;
+    recordingStartTime = Date.now();
+    els.btnStartRecording.disabled = true;
+    els.btnStopRecording.disabled = false;
+    els.btnExportCSV.disabled = true;
+    console.log('Recording started');
+  });
+
+  // Stop recording
+  els.btnStopRecording.addEventListener('click', () => {
+    isRecording = false;
+    els.btnStartRecording.disabled = false;
+    els.btnStopRecording.disabled = true;
+    els.btnExportCSV.disabled = false;
+    console.log('Recording stopped. Total frames:', frameCount);
+  });
+
+  // Export to CSV
+  els.btnExportCSV.addEventListener('click', () => {
+    if (recordedData.length === 0) {
+      alert('No data recorded. Please start recording first.');
+      return;
+    }
+
+    // Convert to CSV format
+    const csvRows = [];
+    
+    // Header
+    csvRows.push([
+      'Frame',
+      'Timestamp (ms)',
+      'Pose Detected',
+      'Pose Landmarks Count',
+      'Hands Detected',
+      'Hand 1 Handedness',
+      'Hand 1 Landmarks Count',
+      'Hand 2 Handedness',
+      'Hand 2 Landmarks Count',
+      'Pose Landmark Data',
+      'Hand Landmark Data'
+    ].join(','));
+
+    // Data rows
+    recordedData.forEach(frame => {
+      const poseDetected = frame.pose ? 'Yes' : 'No';
+      const poseLandmarksCount = frame.pose ? frame.pose.landmarks.length : 0;
+      const handsDetected = frame.hands.length;
+      const hand1Handedness = frame.hands[0] ? frame.hands[0].handedness : '';
+      const hand1LandmarksCount = frame.hands[0] ? frame.hands[0].landmarks.length : 0;
+      const hand2Handedness = frame.hands[1] ? frame.hands[1].handedness : '';
+      const hand2LandmarksCount = frame.hands[1] ? frame.hands[1].landmarks.length : 0;
+
+      // Format pose landmarks
+      let poseData = '';
+      if (frame.pose) {
+        poseData = frame.pose.landmarks.map(lm => 
+          `L${lm.index}:(${lm.x.toFixed(4)},${lm.y.toFixed(4)},${lm.z.toFixed(4)},v:${lm.visibility.toFixed(4)})`
+        ).join(';');
+      }
+
+      // Format hand landmarks
+      let handData = '';
+      if (frame.hands.length > 0) {
+        handData = frame.hands.map((hand, idx) => 
+          `H${idx}[${hand.handedness}]:` + hand.landmarks.map(lm => 
+            `L${lm.index}:(${lm.x.toFixed(4)},${lm.y.toFixed(4)},${lm.z.toFixed(4)})`
+          ).join(';')
+        ).join('|');
+      }
+
+      csvRows.push([
+        frame.frame,
+        frame.timestamp,
+        poseDetected,
+        poseLandmarksCount,
+        handsDetected,
+        hand1Handedness,
+        hand1LandmarksCount,
+        hand2Handedness,
+        hand2LandmarksCount,
+        `"${poseData}"`,
+        `"${handData}"`
+      ].join(','));
+    });
+
+    // Download CSV
+    const csvContent = csvRows.join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `pose_hand_tracking_${Date.now()}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+
+  // Update confidence values
+  els.minDetectionConfidence.addEventListener('input', (e) => {
+    els.minDetectionConfidenceValue.textContent = e.target.value;
+    if (pose) pose.setOptions({ minDetectionConfidence: parseFloat(e.target.value) });
+    if (hands) hands.setOptions({ minDetectionConfidence: parseFloat(e.target.value) });
+  });
+
+  els.minTrackingConfidence.addEventListener('input', (e) => {
+    els.minTrackingConfidenceValue.textContent = e.target.value;
+    if (pose) pose.setOptions({ minTrackingConfidence: parseFloat(e.target.value) });
+    if (hands) hands.setOptions({ minTrackingConfidence: parseFloat(e.target.value) });
+  });
+
+  // Initialize app when MediaPipe is ready
+  function initApp() {
+    console.log('MediaPipe loaded and ready');
+  }
+
+  // Check if MediaPipe is ready
+  checkMediaPipeReady();
+  </script>
+</body>
+</html>

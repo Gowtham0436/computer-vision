@@ -1,14 +1,21 @@
+#!/usr/bin/env python3
 """
-Module 7: Stereo Calibration, Pose Estimation, and Hand Tracking
-Exact implementation from Assignment 7
+Backend for Task 1: Object Size Estimation using Calibrated Stereo
+Provides API endpoints for stereo calibration and 3D triangulation
 """
 
 import cv2
 import numpy as np
+import json
+import os
+from flask import Flask, request, jsonify, send_file
+from flask_cors import CORS
 import base64
 from io import BytesIO
 from PIL import Image
-from core.utils import decode_base64_image, encode_image_to_base64
+
+app = Flask(__name__)
+CORS(app)
 
 # Global storage for calibration data
 calibration_storage = {}
@@ -20,9 +27,11 @@ def create_object_points(pattern_size, square_size):
     objp *= square_size
     return objp
 
-def calibrate_stereo_handler(data):
+@app.route('/api/calibrate', methods=['POST'])
+def calibrate_stereo():
     """Perform stereo calibration from chessboard images"""
     try:
+        data = request.json
         calibration_id = data.get('id', 'default')
         pattern_size = tuple(data['pattern_size'])  # (width, height)
         square_size = float(data['square_size'])  # in mm
@@ -73,10 +82,10 @@ def calibrate_stereo_handler(data):
                 imgpoints_right.append(corners_right)
         
         if len(objpoints) < 3:
-            return {
+            return jsonify({
                 'success': False,
                 'error': f'Need at least 3 valid pairs. Found: {len(objpoints)}'
-            }
+            }), 400
         
         # Get image size from first image
         img_shape = left_gray.shape[::-1]  # (width, height)
@@ -108,28 +117,30 @@ def calibrate_stereo_handler(data):
             'baseline': float(baseline)
         }
         
-        return {
+        return jsonify({
             'success': True,
             'baseline': float(baseline),
             'reprojection_error': float(ret),
             'pairs_used': len(objpoints)
-        }
+        })
         
     except Exception as e:
-        return {'success': False, 'error': str(e)}
+        return jsonify({'success': False, 'error': str(e)}), 500
 
-def triangulate_points_handler(data):
+@app.route('/api/triangulate', methods=['POST'])
+def triangulate_points():
     """Triangulate 3D points from stereo correspondences"""
     try:
+        data = request.json
         calibration_id = data.get('id', 'default')
         left_points = np.array(data['left_points'], dtype=np.float32)
         right_points = np.array(data['right_points'], dtype=np.float32)
         
         if calibration_id not in calibration_storage:
-            return {
+            return jsonify({
                 'success': False,
                 'error': 'Calibration not found. Please calibrate first.'
-            }
+            }), 400
         
         calib = calibration_storage[calibration_id]
         
@@ -177,20 +188,22 @@ def triangulate_points_handler(data):
         min_distance = float(np.min(distances))
         max_distance = float(np.max(distances))
         
-        return {
+        return jsonify({
             'success': True,
             'points_3d': points_3d.tolist(),
             'avg_distance': avg_distance,
             'min_distance': min_distance,
             'max_distance': max_distance
-        }
+        })
         
     except Exception as e:
-        return {'success': False, 'error': str(e)}
+        return jsonify({'success': False, 'error': str(e)}), 500
 
-def measure_object_size_handler(data):
+@app.route('/api/measure_size', methods=['POST'])
+def measure_object_size():
     """Measure object size from 3D points based on shape"""
     try:
+        data = request.json
         points_3d = np.array(data['points_3d'])
         shape = data.get('shape', 'rectangular')
         units = data.get('units', 'mm')
@@ -214,7 +227,7 @@ def measure_object_size_handler(data):
                 else:
                     result['size'] = f"Width: {result['width']:.2f} {units}"
             else:
-                return {'success': False, 'error': 'Need at least 2 points for rectangular'}
+                return jsonify({'success': False, 'error': 'Need at least 2 points for rectangular'}), 400
                 
         elif shape == 'circular':
             if len(points_3d) >= 2:
@@ -223,7 +236,7 @@ def measure_object_size_handler(data):
                 result['diameter'] = float(diameter * unit_scale)
                 result['size'] = f"Diameter: {result['diameter']:.2f} {units}"
             else:
-                return {'success': False, 'error': 'Need at least 2 points for circular'}
+                return jsonify({'success': False, 'error': 'Need at least 2 points for circular'}), 400
                 
         elif shape == 'polygon':
             if len(points_3d) >= 2:
@@ -237,25 +250,27 @@ def measure_object_size_handler(data):
                 result['edges'] = edges
                 result['size'] = f"Edges: {', '.join([f'{e:.2f}' for e in edges])} {units}"
             else:
-                return {'success': False, 'error': 'Need at least 2 points for polygon'}
+                return jsonify({'success': False, 'error': 'Need at least 2 points for polygon'}), 400
         else:
-            return {'success': False, 'error': f'Unknown shape: {shape}'}
+            return jsonify({'success': False, 'error': f'Unknown shape: {shape}'}), 400
         
         # Calculate average Z distance
         avg_z = float(np.mean(points_3d[:, 2]))
         result['avg_distance_z'] = float(avg_z * unit_scale)
         
-        return {
+        return jsonify({
             'success': True,
             **result
-        }
+        })
         
     except Exception as e:
-        return {'success': False, 'error': str(e)}
+        return jsonify({'success': False, 'error': str(e)}), 500
 
-def detect_chessboard_handler(data):
+@app.route('/api/detect_chessboard', methods=['POST'])
+def detect_chessboard():
     """Detect chessboard corners in stereo image pair"""
     try:
+        data = request.json
         left_data = base64.b64decode(data['left_image'].split(',')[1])
         right_data = base64.b64decode(data['right_image'].split(',')[1])
         pattern_size = tuple(data['pattern_size'])
@@ -326,10 +341,10 @@ def detect_chessboard_handler(data):
             error_msg = f'Chessboard not found. Left: {ret_left}, Right: {ret_right}. '
             error_msg += 'Tips: Ensure the entire chessboard is visible, well-lit, and flat. '
             error_msg += f'Pattern size should be {pattern_size[0]}x{pattern_size[1]} inner corners.'
-            return {
+            return jsonify({
                 'success': False,
                 'error': error_msg
-            }
+            }), 400
         
         # Refine corners
         criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
@@ -340,18 +355,20 @@ def detect_chessboard_handler(data):
             right_gray, corners_right, (11, 11), (-1, -1), criteria
         )
         
-        return {
+        return jsonify({
             'success': True,
             'left_corners': corners_left.reshape(-1, 2).tolist(),
             'right_corners': corners_right.reshape(-1, 2).tolist()
-        }
+        })
         
     except Exception as e:
-        return {'success': False, 'error': str(e)}
+        return jsonify({'success': False, 'error': str(e)}), 500
 
-def debug_chessboard_handler(data):
+@app.route('/api/debug_chessboard', methods=['POST'])
+def debug_chessboard():
     """Debug endpoint to check image properties"""
     try:
+        data = request.json
         left_data = base64.b64decode(data['left_image'].split(',')[1])
         right_data = base64.b64decode(data['right_image'].split(',')[1])
         pattern_size = tuple(data['pattern_size'])
@@ -376,7 +393,7 @@ def debug_chessboard_handler(data):
             cv2.CALIB_CB_ADAPTIVE_THRESH + cv2.CALIB_CB_FAST_CHECK
         )
         
-        return {
+        return jsonify({
             'success': True,
             'left_image_shape': left_gray.shape,
             'right_image_shape': right_gray.shape,
@@ -387,6 +404,39 @@ def debug_chessboard_handler(data):
             'right_mean_brightness': float(np.mean(right_gray)),
             'left_contrast': float(np.std(left_gray)),
             'right_contrast': float(np.std(right_gray))
-        }
+        })
     except Exception as e:
-        return {'success': False, 'error': str(e)}
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/health', methods=['GET'])
+def health():
+    """Health check endpoint"""
+    return jsonify({'status': 'ok', 'calibrations': len(calibration_storage)})
+
+# Serve static HTML pages
+@app.route('/')
+def index():
+    """Serve the main landing page"""
+    return send_file('index.html')
+
+@app.route('/task1_stereo_measurement.html')
+def task1():
+    """Serve Task 1 page"""
+    return send_file('task1_stereo_measurement.html')
+
+@app.route('/task3_pose_hand_tracking.html')
+def task3():
+    """Serve Task 3 page"""
+    return send_file('task3_pose_hand_tracking.html')
+
+if __name__ == '__main__':
+    print("=" * 60)
+    print("Computer Vision Assignment 7 - Server Starting")
+    print("=" * 60)
+    print("Main page:      http://localhost:5001/")
+    print("Task 1 (Stereo): http://localhost:5001/task1_stereo_measurement.html")
+    print("Task 3 (Pose):   http://localhost:5001/task3_pose_hand_tracking.html")
+    print("Health check:   http://localhost:5001/api/health")
+    print("=" * 60)
+    app.run(debug=True, port=5001)
+

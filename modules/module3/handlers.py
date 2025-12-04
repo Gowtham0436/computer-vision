@@ -705,9 +705,9 @@ def detect_boundary_handler(image_data, method='contour', close_k=5, min_area_pc
     
     if not all([original_encoded, boundary_encoded, overlay_encoded]):
         return {'success': False, 'error': 'Failed to encode result images'}
-    
-    return {
-        'success': True,
+        
+        return {
+            'success': True,
         'original_image': original_encoded,
         'boundary': boundary_encoded,
         'boundary_overlay': overlay_encoded,
@@ -778,10 +778,6 @@ def segment_with_aruco_handler(image_data, use_corners=True):
     aruco_params.minCornerDistanceRate = 0.02
     aruco_params.minDistanceToBorder = 1
     aruco_params.cornerRefinementMethod = cv2.aruco.CORNER_REFINE_SUBPIX
-    
-    # Try each dictionary
-    for dict_type in aruco_dicts:
-        aruco_dict = cv2.aruco.getPredefinedDictionary(dict_type)
     
     # Try each dictionary
     for dict_type in aruco_dicts:
@@ -965,7 +961,7 @@ def segment_with_aruco_handler(image_data, use_corners=True):
         }
     
     # Create mask from ordered contour (not convex hull - matches Assignment3)
-        mask = np.zeros(gray.shape, dtype=np.uint8)
+    mask = np.zeros(gray.shape, dtype=np.uint8)
     cv2.fillPoly(mask, [ordered_contour], 255)
     
     # Draw boundary using ordered contour

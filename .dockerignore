@@ -35,9 +35,6 @@ cvenv/
 test_*.py
 *_test.py
 
-# Keep entrypoint script
-!entrypoint.sh
-
 # OS
 .DS_Store
 Thumbs.db
@@ -45,3 +42,7 @@ Thumbs.db
 # Logs
 *.log
 
+# Deployment configs (keep Dockerfile, ignore others)
+Procfile
+railway.json
+nixpacks.toml

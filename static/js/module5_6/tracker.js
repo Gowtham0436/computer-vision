@@ -561,7 +561,7 @@ class ObjectTracker {
         if (!this.sam2Masks || this.sam2Masks.length === 0) {
             // No masks - check if we have a template from selection
             if (!this.sam2Template) {
-                return false;
+            return false;
             }
         }
         
@@ -629,7 +629,7 @@ class ObjectTracker {
                 
                 cv.cvtColor(src, srcGray, cv.COLOR_RGBA2GRAY);
                 cv.cvtColor(this.sam2Template, templateGray, cv.COLOR_RGBA2GRAY);
-                
+            
                 // Template matching
                 const result = new cv.Mat();
                 cv.matchTemplate(srcGray, templateGray, result, cv.TM_CCOEFF_NORMED);
@@ -646,7 +646,7 @@ class ObjectTracker {
                         width: this.sam2Template.cols,
                         height: this.sam2Template.rows
                     };
-                    
+            
                     // Update template periodically for better tracking
                     if (maxVal > 0.7) {
                         const newTemplate = src.roi(new cv.Rect(trackedRect.x, trackedRect.y, trackedRect.width, trackedRect.height));
@@ -666,7 +666,7 @@ class ObjectTracker {
                 let scaledMask = new cv.Mat();
                 cv.resize(mask, scaledMask, new cv.Size(src.cols, src.rows), 0, 0, cv.INTER_LINEAR);
                 cv.threshold(scaledMask, scaledMask, 127, 255, cv.THRESH_BINARY);
-                const rect = cv.boundingRect(scaledMask);
+            const rect = cv.boundingRect(scaledMask);
                 trackedRect = { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
                 scaledMask.delete();
             }
