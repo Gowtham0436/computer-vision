@@ -13,15 +13,20 @@ ENV PYTHONUNBUFFERED=1 \
     QT_QPA_PLATFORM=offscreen
 
 # Install system dependencies for OpenCV and MediaPipe
+# Note: libgl1 provides libGL.so.1 which is required even for headless OpenCV
+# Installing both libgl1 and libgl1-mesa-glx to ensure compatibility
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
+        libgl1 \
         libgl1-mesa-glx \
         libglib2.0-0 \
         libsm6 \
         libxext6 \
         libxrender-dev \
+        libxrender1 \
         libgomp1 && \
-    rm -rf /var/lib/apt/lists/*
+    rm -rf /var/lib/apt/lists/* && \
+    ldconfig
 
 # Set working directory
 WORKDIR /app
