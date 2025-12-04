@@ -33,12 +33,12 @@ COPY . .
 # Create necessary directories
 RUN mkdir -p uploads static/outputs
 
-# Copy and set permissions for entrypoint script
-COPY entrypoint.sh /app/entrypoint.sh
-RUN chmod +x /app/entrypoint.sh
+# Copy and set permissions for Python startup script
+COPY start.py /app/start.py
+RUN chmod +x /app/start.py
 
 # Expose port (Railway will override with PORT env var)
 EXPOSE 8080
 
-# Use entrypoint script to handle PORT variable
-ENTRYPOINT ["/app/entrypoint.sh"]
+# Use Python script to handle PORT variable (Railway can't pre-validate Python)
+CMD ["python", "/app/start.py"]
