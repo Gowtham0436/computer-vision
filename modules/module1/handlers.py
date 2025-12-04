@@ -5,11 +5,12 @@ Contains the actual dimension calculation algorithms
 
 import cv2
 import numpy as np
+import os
 from datetime import datetime
 from core.utils import decode_base64_image, encode_image_to_base64, convert_mm_to_inch
 from .evaluation_data import EVALUATION_DATA
 
-def calculate_roi_dimensions(image_data, roi, params):
+def calculate_roi_dimensions(image_data, roi, params, filename=None):
     """
     Calculate dimensions from ROI selection
     
@@ -17,6 +18,7 @@ def calculate_roi_dimensions(image_data, roi, params):
         image_data: Base64 encoded image
         roi: Dictionary with x, y, width, height
         params: Camera parameters (fx, fy, cx, cy, z)
+        filename: Optional original filename to use for output
         
     Returns:
         Dictionary with success status and measurements
@@ -71,9 +73,19 @@ def calculate_roi_dimensions(image_data, roi, params):
     cv2.putText(image, f"H: {real_height_mm:.2f} mm", (x, y + h + 25), 
                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
     
-    # Save annotated image
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_path = f'static/outputs/roi_{timestamp}.png'
+    # Save annotated image with same filename as input
+    if filename:
+        # Extract filename without extension and add _roi suffix
+        base_name = os.path.splitext(os.path.basename(filename))[0]
+        # Preserve original extension or default to .png
+        ext = os.path.splitext(filename)[1] or '.png'
+        output_filename = f'{base_name}_roi{ext}'
+    else:
+        # Fallback to timestamp if no filename provided
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_filename = f'roi_{timestamp}.png'
+    
+    output_path = f'static/outputs/{output_filename}'
     cv2.imwrite(output_path, image)
     
     # Convert to base64 for display

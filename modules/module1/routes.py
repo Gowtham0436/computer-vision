@@ -46,7 +46,8 @@ def api_calculate_roi():
         result = calculate_roi_dimensions(
             image_data=data.get('image'),
             roi=data.get('roi'),
-            params=data.get('params')
+            params=data.get('params'),
+            filename=data.get('filename')
         )
         return jsonify(result)
     except Exception as e:

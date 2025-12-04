@@ -185,6 +185,7 @@
 {% block scripts %}
 <script>
 let uploadedImage = null;
+let uploadedFileName = null;
 let canvas = null;
 let ctx = null;
 let isDrawing = false;
@@ -198,6 +199,9 @@ let actualImageHeight = 0;
 function handleFileUpload(event) {
     const file = event.target.files[0];
     if (!file) return;
+    
+    // Store the filename
+    uploadedFileName = file.name;
     
     const reader = new FileReader();
     reader.onload = function(e) {
@@ -351,7 +355,8 @@ async function calculateDimensions() {
             body: JSON.stringify({
                 image: uploadedImage,
                 roi: selection,
-                params: params
+                params: params,
+                filename: uploadedFileName
             })
         });
         
