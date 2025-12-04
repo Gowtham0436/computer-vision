@@ -1,17 +1,55 @@
 """
 Core utilities for image processing and common functions
+Optimized for Railway deployment with memory and processing constraints
 """
 
 import base64
 import numpy as np
 import cv2
 
-def decode_base64_image(image_data):
+# Maximum image dimensions for processing (to prevent memory issues on free tier)
+MAX_IMAGE_WIDTH = 1200
+MAX_IMAGE_HEIGHT = 1200
+JPEG_QUALITY = 85  # Balance between quality and size
+
+def resize_image_if_needed(image, max_width=MAX_IMAGE_WIDTH, max_height=MAX_IMAGE_HEIGHT):
     """
-    Decode base64 image data to OpenCV image
+    Resize image if it exceeds maximum dimensions while maintaining aspect ratio.
+    This is critical for Railway deployment to prevent memory issues.
+    
+    Args:
+        image: OpenCV image (numpy.ndarray)
+        max_width: Maximum width
+        max_height: Maximum height
+        
+    Returns:
+        Resized image (or original if already within limits)
+    """
+    if image is None:
+        return None
+    
+    h, w = image.shape[:2]
+    
+    # Check if resize is needed
+    if w <= max_width and h <= max_height:
+        return image
+    
+    # Calculate scaling factor
+    scale = min(max_width / w, max_height / h)
+    new_w = int(w * scale)
+    new_h = int(h * scale)
+    
+    # Use INTER_AREA for downscaling (best quality)
+    resized = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_AREA)
+    return resized
+
+def decode_base64_image(image_data, auto_resize=True):
+    """
+    Decode base64 image data to OpenCV image with automatic resizing for deployment.
     
     Args:
         image_data: Base64 encoded image string (data:image/png;base64,...) or raw base64
+        auto_resize: Whether to automatically resize large images (default: True)
         
     Returns:
         numpy.ndarray: OpenCV image or None if failed
@@ -43,6 +81,10 @@ def decode_base64_image(image_data):
                 image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
             else:
                 return None
+        
+        # Auto-resize for deployment to prevent memory issues
+        if auto_resize:
+            image = resize_image_if_needed(image)
                 
         return image
     except base64.binascii.Error as e:
@@ -54,13 +96,14 @@ def decode_base64_image(image_data):
         traceback.print_exc()
         return None
 
-def encode_image_to_base64(image, format='.png'):
+def encode_image_to_base64(image, format='.jpg', quality=JPEG_QUALITY):
     """
-    Encode OpenCV image to base64 string (returns raw base64, no data URL prefix)
+    Encode OpenCV image to base64 string with JPEG compression for smaller size.
     
     Args:
         image: OpenCV image (numpy.ndarray)
-        format: Image format (default: '.png')
+        format: Image format (default: '.jpg' for smaller size)
+        quality: JPEG quality (0-100, default: 85)
         
     Returns:
         str: Base64 encoded image string (without data URL prefix) or None if failed
@@ -69,18 +112,35 @@ def encode_image_to_base64(image, format='.png'):
         if image is None:
             print("Error: Cannot encode None image")
             return None
-        _, buffer = cv2.imencode(format, image)
+        
+        # Resize before encoding if too large
+        image = resize_image_if_needed(image)
+        
+        # Use JPEG for smaller file sizes (critical for deployment)
+        if format == '.jpg' or format == '.jpeg':
+            encode_params = [cv2.IMWRITE_JPEG_QUALITY, quality]
+        elif format == '.png':
+            encode_params = [cv2.IMWRITE_PNG_COMPRESSION, 6]  # 0-9, higher = more compression
+        else:
+            encode_params = []
+        
+        _, buffer = cv2.imencode(format, image, encode_params)
         if buffer is None:
             print("Error: cv2.imencode returned None")
             return None
         img_base64 = base64.b64encode(buffer).decode('utf-8')
-        # Return just the base64 string (frontend will add data:image/png;base64, prefix)
         return img_base64
     except Exception as e:
         print(f"Error encoding image: {type(e).__name__}: {e}")
         import traceback
         traceback.print_exc()
         return None
+
+def encode_image_to_base64_png(image):
+    """
+    Encode image as PNG (for cases where quality is critical like masks)
+    """
+    return encode_image_to_base64(image, format='.png')
 
 def convert_mm_to_inch(mm):
     """Convert millimeters to inches"""

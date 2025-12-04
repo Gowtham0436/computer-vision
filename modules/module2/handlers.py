@@ -4,23 +4,41 @@ Assignment 2 Implementation:
 1. Template Matching using Correlation
 2. Image Restoration using Fourier Transform
 3. Multi-object Detection and Blurring
+
+Optimized for Railway deployment with reduced memory usage.
 """
 
 import os
 import cv2
 import numpy as np
 import requests
-from core.utils import decode_base64_image, encode_image_to_base64
+from core.utils import decode_base64_image, encode_image_to_base64, resize_image_if_needed
 
-# Global feature detector cache
+# Global feature detector cache - reduced features for deployment
 _sift_detector = None
 
+# Deployment optimization constants
+MAX_PROCESSING_WIDTH = 800  # Reduced for faster processing
+MAX_PROCESSING_HEIGHT = 800
+
 def _get_sift_detector():
-    """Get or create SIFT detector (cached for performance)"""
+    """Get or create SIFT detector (cached for performance, reduced features for deployment)"""
     global _sift_detector
     if _sift_detector is None:
-        _sift_detector = cv2.SIFT_create(nfeatures=2000)
+        # Reduced from 2000 to 500 features for faster processing on Railway
+        _sift_detector = cv2.SIFT_create(nfeatures=500)
     return _sift_detector
+
+def _resize_for_processing(image, max_width=MAX_PROCESSING_WIDTH, max_height=MAX_PROCESSING_HEIGHT):
+    """Resize image for processing to reduce memory usage"""
+    if image is None:
+        return None, 1.0
+    h, w = image.shape[:2]
+    if w <= max_width and h <= max_height:
+        return image, 1.0
+    scale = min(max_width / w, max_height / h)
+    new_w, new_h = int(w * scale), int(h * scale)
+    return cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_AREA), scale
 
 def _robust_feature_match(template_bgr, target_bgr):
     """
@@ -138,6 +156,7 @@ def _multi_scale_template_match(template_bgr, target_bgr):
     """
     Multi-scale template matching as fallback.
     Uses normalized cross-correlation with multiple scales and rotations.
+    Optimized for deployment with fewer scales.
     """
     try:
         # Convert to grayscale
@@ -160,8 +179,8 @@ def _multi_scale_template_match(template_bgr, target_bgr):
         best_match = None
         best_score = -1.0
         
-        # Multi-scale search
-        scales = np.linspace(0.3, 2.0, 25)
+        # Multi-scale search - reduced from 25 to 10 scales for faster processing
+        scales = np.linspace(0.4, 1.8, 10)
         
         for scale in scales:
             new_w = int(tpl_w * scale)
@@ -408,6 +427,8 @@ def restore_image_handler(image_data):
     4. Combine with guided filtering using high-frequency components
     5. Apply adaptive enhancement for optimal visual quality
     
+    Optimized for Railway deployment with reduced image size.
+    
     Args:
         image_data: Base64 encoded original image L
         
@@ -418,9 +439,13 @@ def restore_image_handler(image_data):
     if original is None:
         return {'success': False, 'error': 'Invalid image'}
     
+    # Resize for processing to reduce memory usage (FFT is memory intensive)
+    original, _ = _resize_for_processing(original, 600, 600)
+    
     # Step 1: Apply Gaussian blur to create L_b (visible blur)
-    ksize = 51
-    sigma = 12.0
+    # Reduced kernel size for faster processing
+    ksize = 31
+    sigma = 8.0
     blurred = cv2.GaussianBlur(original, (ksize, ksize), sigma)
     
     # Step 2: Wiener Deconvolution in Fourier Domain

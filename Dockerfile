@@ -47,5 +47,10 @@ EXPOSE 8080
 
 # Start the application
 # Note: Railway's proxy automatically routes traffic to port 8080
-CMD ["gunicorn", "app:app", "--bind", "0.0.0.0:8080", "--workers", "2", "--threads", "2", "--timeout", "120"]
+# Optimized settings for Railway free tier:
+# - 1 worker to reduce memory usage
+# - 4 threads for concurrent requests
+# - 300 second timeout for heavy image processing
+# - preload to reduce memory per worker
+CMD ["gunicorn", "app:app", "--bind", "0.0.0.0:8080", "--workers", "1", "--threads", "4", "--timeout", "300", "--preload"]
 

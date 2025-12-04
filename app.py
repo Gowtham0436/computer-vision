@@ -18,7 +18,7 @@ def create_app():
     if app.secret_key == 'dev-key-change-in-production' and os.environ.get('FLASK_ENV') == 'production':
         raise ValueError("SECRET_KEY environment variable must be set for production")
     app.config['UPLOAD_FOLDER'] = 'uploads'
-    app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB (increased for image stitching with multiple images)
+    app.config['MAX_CONTENT_LENGTH'] = 32 * 1024 * 1024  # 32MB (reduced for Railway deployment)
     app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg'}
     
     # Session configuration - persist across page refreshes and server restarts

@@ -122,9 +122,10 @@ def stitch_images_with_reference_handler(images_data, reference_image_data=None)
     if len(images) < 2:
         return {'success': False, 'error': 'Need at least 2 valid images'}
     
-    # Resize images if too large (to avoid memory issues)
-    max_width = 1800
-    resize_width = 960  # For SIFT processing
+    # Resize images if too large (to avoid memory issues on Railway)
+    # Reduced from 1800/960 for deployment
+    max_width = 1000  # Reduced for Railway deployment
+    resize_width = 600  # For SIFT processing - reduced for faster processing
     resized_images = []
     resized_for_sift = []
     for img in images:

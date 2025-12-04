@@ -2,6 +2,10 @@
                     CSc 8830 Computer Vision Project - Links
 ================================================================================
 
+GITHUB REPOSITORY
+--------------------------------------------------------------------------------
+https://github.com/Gowtham0436/ComputerVision_Gowtham
+
 LIVE WEBSITE
 --------------------------------------------------------------------------------
 Public URL: https://web-production-eff5.up.railway.app
@@ -37,14 +41,8 @@ Module 7 - Stereo Vision & Pose Estimation:
                            DERIVATION DOCUMENTS
 ================================================================================
 
-Module 1 - Perspective Projection Equations:
-    https://docs.google.com/document/d/1LCS-pMZc43crUcNrvYt7jO-VWAmUCUcfcD0CZ9NHdmw/edit?usp=sharing
-
-Module 5-6 - Lucas-Kanade Optical Flow & Affine Motion Model:
-    https://docs.google.com/document/d/1LACvjROUFot_AqIzYj0mHj1TEeKIFW4FRhDNz9A23qw/edit?usp=sharing
-
-Module 7 - Uncalibrated Stereo Reconstruction:
-    https://docs.google.com/document/d/1xmeF3Ek7uIAratsi-S8-WAou9DPjP43YmSKWZ22JOH4/edit?usp=sharing
+All Derivations (Module 1, 5-6, 7):
+    https://drive.google.com/drive/folders/16H8lytft6BIBHbOKtem6rIhnSVJ3WdCy?usp=sharing
 
 
 ================================================================================

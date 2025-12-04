@@ -6,13 +6,30 @@ Assignment 3 Implementation - Advanced Algorithms:
 3. Corner detection algorithm (Custom Harris)
 4. Object boundary detection using OpenCV (Advanced contour scoring)
 5. Object segmentation using ArUco markers + SAM2 comparison
+
+Optimized for Railway deployment with reduced memory usage.
 """
 
 import os
 import cv2
 import numpy as np
 import base64
-from core.utils import decode_base64_image, encode_image_to_base64
+from core.utils import decode_base64_image, encode_image_to_base64, resize_image_if_needed
+
+# Deployment optimization constants
+MAX_PROCESSING_WIDTH = 800
+MAX_PROCESSING_HEIGHT = 800
+
+def _resize_for_processing(image, max_width=MAX_PROCESSING_WIDTH, max_height=MAX_PROCESSING_HEIGHT):
+    """Resize image for processing to reduce memory usage"""
+    if image is None:
+        return None
+    h, w = image.shape[:2]
+    if w <= max_width and h <= max_height:
+        return image
+    scale = min(max_width / w, max_height / h)
+    new_w, new_h = int(w * scale), int(h * scale)
+    return cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_AREA)
 
 def percentile_from_8u(mat, p):
     """Calculate percentile from 8-bit unsigned matrix"""
@@ -29,6 +46,7 @@ def compute_gradient_and_log_handler(image_data):
     """
     Problem 1: Compute gradient images and Laplacian of Gaussian
     Advanced implementation matching JavaScript version
+    Optimized for Railway deployment.
     
     Returns:
         - Gradient magnitude image
@@ -38,6 +56,9 @@ def compute_gradient_and_log_handler(image_data):
     image = decode_base64_image(image_data)
     if image is None:
         return {'success': False, 'error': 'Invalid image'}
+    
+    # Resize for processing
+    image = _resize_for_processing(image)
     
     # Convert to grayscale
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if len(image.shape) == 3 else image
@@ -113,10 +134,14 @@ def detect_edges_handler(image_data, threshold1=50, threshold2=150, edge_auto=Tr
     """
     Problem 2: Edge Detection Algorithm
     Clean Canny edge detection with proper thresholding
+    Optimized for Railway deployment.
     """
     image = decode_base64_image(image_data)
     if image is None:
         return {'success': False, 'error': 'Invalid image'}
+    
+    # Resize for processing
+    image = _resize_for_processing(image)
     
     # Convert to grayscale
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if len(image.shape) == 3 else image
@@ -743,10 +768,14 @@ def segment_with_aruco_handler(image_data, use_corners=True):
     - Collects all 4 corners of each marker (or centers if use_corners=False)
     - Orders points around centroid by angle (not convex hull)
     - Creates contour from ordered points
+    Optimized for Railway deployment.
     """
     image = decode_base64_image(image_data)
     if image is None:
         return {'success': False, 'error': 'Invalid image'}
+    
+    # Resize for processing
+    image = _resize_for_processing(image)
     
     # Convert to grayscale for ArUco detection
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if len(image.shape) == 3 else image
