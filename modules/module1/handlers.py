@@ -5,8 +5,6 @@ Contains the actual dimension calculation algorithms
 
 import cv2
 import numpy as np
-import os
-import re
 from datetime import datetime
 from core.utils import decode_base64_image, encode_image_to_base64, convert_mm_to_inch
 from .evaluation_data import EVALUATION_DATA
@@ -74,26 +72,7 @@ def calculate_roi_dimensions(image_data, roi, params, filename=None):
     cv2.putText(image, f"H: {real_height_mm:.2f} mm", (x, y + h + 25), 
                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
     
-    # Save annotated image with same filename as input
-    if filename:
-        # Extract filename without extension and add _roi suffix
-        base_name = os.path.splitext(os.path.basename(filename))[0]
-        # Preserve original extension or default to .png
-        ext = os.path.splitext(filename)[1] or '.png'
-        output_filename = f'{base_name}_roi{ext}'
-    else:
-        # Fallback to timestamp if no filename provided
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_filename = f'roi_{timestamp}.png'
-    
-    output_path = f'static/outputs/{output_filename}'
-    cv2.imwrite(output_path, image)
-    
-    # Automatically update evaluation data with measured dimensions
-    if filename:  # Only update if we have a filename (not timestamp-based)
-        update_evaluation_data(output_path, round(real_width_mm, 2), round(real_height_mm, 2))
-    
-    # Convert to base64 for display
+    # Convert to base64 for display (no longer saving to disk)
     annotated_image = encode_image_to_base64(image)
     
     return {
@@ -102,8 +81,7 @@ def calculate_roi_dimensions(image_data, roi, params, filename=None):
         'height_mm': round(real_height_mm, 2),
         'width_inches': round(width_inches, 2),
         'height_inches': round(height_inches, 2),
-        'annotated_image': annotated_image,
-        'output_path': output_path
+        'annotated_image': annotated_image
     }
 
 def calculate_points_dimensions(image_data, point1, point2, params):
@@ -184,80 +162,6 @@ def calculate_points_dimensions(image_data, point1, point2, params):
         'height_inches': round(height_inches, 2),
         'annotated_image': annotated_image
     }
-
-def update_evaluation_data(output_path, width_mm, height_mm):
-    """
-    Automatically update evaluation_data.py with measured dimensions
-    
-    Args:
-        output_path: Path to the saved output image (e.g., 'static/outputs/blackbox_roi.JPG')
-        width_mm: Measured width in mm
-        height_mm: Measured height in mm
-    """
-    try:
-        # Convert output_path to match format in EVALUATION_DATA
-        # output_path is like 'static/outputs/blackbox_roi.JPG'
-        # image_path in data is like 'outputs/blackbox_roi.JPG'
-        if output_path.startswith('static/'):
-            image_path = output_path[7:]  # Remove 'static/' prefix
-        else:
-            image_path = output_path
-        
-        # Find matching entry in EVALUATION_DATA
-        data_file_path = os.path.join(os.path.dirname(__file__), 'evaluation_data.py')
-        
-        # Read the current file
-        with open(data_file_path, 'r') as f:
-            lines = f.readlines()
-        
-        # Find the entry with matching image_path
-        updated = False
-        in_target_entry = False
-        found_image_path = False
-        width_updated = False
-        height_updated = False
-        
-        for i, line in enumerate(lines):
-            # Check if this line contains the matching image_path
-            if f'"image_path": "{image_path}"' in line:
-                in_target_entry = True
-                found_image_path = True
-                continue
-            
-            # If we're in the target entry, look for measured_width_mm and measured_height_mm
-            if in_target_entry:
-                # Check if we've moved to next entry (new opening brace)
-                if line.strip().startswith('{') and not width_updated:
-                    # We've moved past our entry without finding measurements
-                    break
-                
-                # Update measured_width_mm
-                if '"measured_width_mm":' in line and not width_updated:
-                    # Replace the value while preserving the rest of the line
-                    lines[i] = re.sub(r'"measured_width_mm":\s*[\d.]+', f'"measured_width_mm": {width_mm}', line)
-                    updated = True
-                    width_updated = True
-                
-                # Update measured_height_mm
-                if '"measured_height_mm":' in line and not height_updated:
-                    # Replace the value while preserving the rest of the line
-                    lines[i] = re.sub(r'"measured_height_mm":\s*[\d.]+', f'"measured_height_mm": {height_mm}', line)
-                    updated = True
-                    height_updated = True
-                
-                # Once we've updated both, we're done with this entry
-                if width_updated and height_updated:
-                    break
-        
-        # Write back if updated
-        if updated and found_image_path:
-            with open(data_file_path, 'w') as f:
-                f.writelines(lines)
-            return True
-        return False
-    except Exception as e:
-        print(f"Error updating evaluation data: {e}")
-        return False
 
 def calculate_evaluation_metrics():
     """
