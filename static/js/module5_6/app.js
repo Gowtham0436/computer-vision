@@ -73,6 +73,8 @@ function startCamera() {
         .then(mediaStream => {
             stream = mediaStream;
             video.srcObject = stream;
+            // Mirror the video element for natural left/right movement
+            video.style.transform = 'scaleX(-1)';
             video.play();
             
             video.addEventListener('loadedmetadata', () => {
@@ -215,8 +217,18 @@ function captureTemplate(rect) {
     // Convert to OpenCV Mat
     const src = cv.matFromImageData(imageData);
     
-    // Set template in tracker
-    tracker.setTemplate(rect, src);
+    // Convert selection coordinates from mirrored canvas to original video coordinates
+    // Canvas is mirrored, so x coordinate needs to be flipped
+    const mirroredX = canvas.width - rect.x - rect.width;
+    const videoRect = {
+        x: Math.max(0, Math.round(mirroredX)),
+        y: Math.max(0, Math.round(rect.y)),
+        width: Math.min(Math.round(rect.width), tempCanvas.width - Math.round(mirroredX)),
+        height: Math.min(Math.round(rect.height), tempCanvas.height - Math.round(rect.y))
+    };
+    
+    // Set template in tracker using original video coordinates
+    tracker.setTemplate(videoRect, src);
     
     src.delete();
 }
@@ -267,15 +279,22 @@ function startSAM2Selection() {
 
 function createSAM2FromSelection(rect) {
     try {
-        // Get current frame
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        // Get current frame from video (not canvas, since canvas is mirrored)
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = video.videoWidth;
+        tempCanvas.height = video.videoHeight;
+        const tempCtx = tempCanvas.getContext('2d');
+        tempCtx.drawImage(video, 0, 0);
+        const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
         const src = cv.matFromImageData(imageData);
         
-        // Fill the selected region with white (255)
-        const x = Math.max(0, Math.round(rect.x));
+        // Convert selection coordinates from mirrored canvas to original video coordinates
+        // Canvas is mirrored, so x coordinate needs to be flipped
+        const mirroredX = canvas.width - rect.x - rect.width;
+        const x = Math.max(0, Math.round(mirroredX));
         const y = Math.max(0, Math.round(rect.y));
-        const w = Math.min(Math.round(rect.width), canvas.width - x);
-        const h = Math.min(Math.round(rect.height), canvas.height - y);
+        const w = Math.min(Math.round(rect.width), tempCanvas.width - x);
+        const h = Math.min(Math.round(rect.height), tempCanvas.height - y);
         
         if (w < 10 || h < 10) {
             updateStatus('Selection too small. Try again.');
@@ -283,8 +302,8 @@ function createSAM2FromSelection(rect) {
             return;
         }
         
-        // Create a simple mask for the selected region
-        const mask = new cv.Mat.zeros(canvas.height, canvas.width, cv.CV_8UC1);
+        // Create a simple mask for the selected region (use video dimensions, not canvas)
+        const mask = new cv.Mat.zeros(tempCanvas.height, tempCanvas.width, cv.CV_8UC1);
         cv.rectangle(mask, new cv.Point(x, y), new cv.Point(x + w, y + h), new cv.Scalar(255), -1);
         
         // Clear any existing masks
@@ -308,9 +327,10 @@ function createSAM2FromSelection(rect) {
         tracker.sam2TemplateRect = { x: x, y: y, width: w, height: h };
         
         src.delete();
+        tempCanvas.width = 0; // Clean up
         
         updateStatus('✓ Object selected! Tracking started. Move the object around.');
-        console.log('SAM2 tracking initialized from selection:', w, 'x', h);
+        console.log('SAM2 tracking initialized from selection:', w, 'x', h, 'at', x, y);
     } catch (err) {
         console.error('Error creating SAM2 from selection:', err);
         updateStatus('Error: ' + err.message);
@@ -321,8 +341,12 @@ function processVideo() {
     if (!isRunning) return;
     
     try {
-        // Draw video frame to canvas
+        // Mirror the video when drawing to canvas (horizontal flip)
+        ctx.save();
+        ctx.scale(-1, 1);
+        ctx.translate(-canvas.width, 0);
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        ctx.restore();
         
         // Get image data with willReadFrequently for better performance
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);

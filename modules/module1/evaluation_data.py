@@ -6,103 +6,102 @@ Stores physical dimensions and measured dimensions for 10 different objects
 # Evaluation data structure
 # Each entry contains:
 # - object_name: Name/description of the object
-# - physical_width_mm: Actual physical width in mm
-# - physical_height_mm: Actual physical height in mm
-# - measured_width_mm: Measured width from ROI calculation in mm
-# - measured_height_mm: Measured height from ROI calculation in mm
+# - physical_width_mm: Actual physical width in mm (to be filled by user)
+# - physical_height_mm: Actual physical height in mm (to be filled by user)
+# - measured_width_mm: Measured width from ROI calculation in mm (extracted from image or entered manually)
+# - measured_height_mm: Measured height from ROI calculation in mm (extracted from image or entered manually)
 # - image_path: Path to the annotated image (relative to static/)
 # - notes: Optional notes about the object/scene
 
 EVALUATION_DATA = [
     {
-        "object_name": "Object 1",
-        "physical_width_mm": 100.0,
-        "physical_height_mm": 50.0,
-        "measured_width_mm": 98.5,
-        "measured_height_mm": 49.2,
-        "image_path": "outputs/roi_20251203_112835.png",
-        "notes": "Sample object - update with your data"
+        "object_name": "Blackbox",
+        "physical_width_mm": 0.0,  # Enter actual physical width
+        "physical_height_mm": 0.0,  # Enter actual physical height
+        "measured_width_mm": 0.0,  # Enter measured width from ROI
+        "measured_height_mm": 0.0,  # Enter measured height from ROI
+        "image_path": "outputs/blackbox_roi.JPG",
+        "notes": ""
     },
     {
-        "object_name": "Object 2",
-        "physical_width_mm": 120.0,
-        "physical_height_mm": 80.0,
-        "measured_width_mm": 118.3,
-        "measured_height_mm": 79.1,
-        "image_path": "outputs/roi_20251203_124516.png",
-        "notes": "Sample object - update with your data"
-    },
-    {
-        "object_name": "Object 3",
-        "physical_width_mm": 0.0,  # Placeholder - update with actual data
-        "physical_height_mm": 0.0,
-        "measured_width_mm": 0.0,
-        "measured_height_mm": 0.0,
-        "image_path": "",
-        "notes": "Update with your data"
-    },
-    {
-        "object_name": "Object 4",
+        "object_name": "Credit Card",
         "physical_width_mm": 0.0,
         "physical_height_mm": 0.0,
         "measured_width_mm": 0.0,
         "measured_height_mm": 0.0,
-        "image_path": "",
-        "notes": "Update with your data"
+        "image_path": "outputs/cc_roi.JPG",
+        "notes": ""
     },
     {
-        "object_name": "Object 5",
+        "object_name": "Earbox",
         "physical_width_mm": 0.0,
         "physical_height_mm": 0.0,
         "measured_width_mm": 0.0,
         "measured_height_mm": 0.0,
-        "image_path": "",
-        "notes": "Update with your data"
+        "image_path": "outputs/earbox_roi.JPG",
+        "notes": ""
     },
     {
-        "object_name": "Object 6",
+        "object_name": "Eraser",
         "physical_width_mm": 0.0,
         "physical_height_mm": 0.0,
         "measured_width_mm": 0.0,
         "measured_height_mm": 0.0,
-        "image_path": "",
-        "notes": "Update with your data"
+        "image_path": "outputs/eraser_roi.JPG",
+        "notes": ""
     },
     {
-        "object_name": "Object 7",
+        "object_name": "Gum",
         "physical_width_mm": 0.0,
         "physical_height_mm": 0.0,
         "measured_width_mm": 0.0,
         "measured_height_mm": 0.0,
-        "image_path": "",
-        "notes": "Update with your data"
+        "image_path": "outputs/gum_roi.JPG",
+        "notes": ""
     },
     {
-        "object_name": "Object 8",
+        "object_name": "Long Notepad",
         "physical_width_mm": 0.0,
         "physical_height_mm": 0.0,
         "measured_width_mm": 0.0,
         "measured_height_mm": 0.0,
-        "image_path": "",
-        "notes": "Update with your data"
+        "image_path": "outputs/longnotepad_roi.JPG",
+        "notes": ""
     },
     {
-        "object_name": "Object 9",
+        "object_name": "Notepad",
         "physical_width_mm": 0.0,
         "physical_height_mm": 0.0,
         "measured_width_mm": 0.0,
         "measured_height_mm": 0.0,
-        "image_path": "",
-        "notes": "Update with your data"
+        "image_path": "outputs/notepad_roi.JPG",
+        "notes": ""
     },
     {
-        "object_name": "Object 10",
+        "object_name": "Phone",
         "physical_width_mm": 0.0,
         "physical_height_mm": 0.0,
         "measured_width_mm": 0.0,
         "measured_height_mm": 0.0,
-        "image_path": "",
-        "notes": "Update with your data"
+        "image_path": "outputs/phone_roi.JPG",
+        "notes": ""
+    },
+    {
+        "object_name": "Remote",
+        "physical_width_mm": 0.0,
+        "physical_height_mm": 0.0,
+        "measured_width_mm": 0.0,
+        "measured_height_mm": 0.0,
+        "image_path": "outputs/remote_roi.JPG",
+        "notes": ""
+    },
+    {
+        "object_name": "Rubix Cube",
+        "physical_width_mm": 0.0,
+        "physical_height_mm": 0.0,
+        "measured_width_mm": 0.0,
+        "measured_height_mm": 0.0,
+        "image_path": "outputs/rubix_roi.JPG",
+        "notes": ""
     }
 ]
-

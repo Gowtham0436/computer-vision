@@ -297,9 +297,13 @@ const RECORD_INTERVAL = 33; // Record approximately every 33ms (~30 FPS)
 // Continuous video rendering loop
 function renderVideoLoop() {
   if (camera && video && video.readyState >= 2) {
-    // Draw video frame continuously
+    // Draw video frame continuously with mirroring
     ctx.save();
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Mirror the canvas (horizontal flip) for natural left/right movement
+    ctx.scale(-1, 1);
+    ctx.translate(-canvas.width, 0);
     
     // Draw video (use MediaPipe processed image if available, otherwise raw video)
     if (frameImage) {
@@ -309,18 +313,22 @@ function renderVideoLoop() {
     }
     
     // Draw pose landmarks if available
+    // Note: Canvas is already mirrored, so landmarks will be automatically mirrored
     if (els.enablePose.checked && currentPoseResults && currentPoseResults.poseLandmarks) {
       drawConnectors(ctx, currentPoseResults.poseLandmarks, POSE_CONNECTIONS, { color: '#FF0000', lineWidth: 2 });
       drawLandmarks(ctx, currentPoseResults.poseLandmarks, { color: '#FF0000', lineWidth: 1, radius: 2 });
     }
 
     // Draw hand landmarks if available
+    // Note: Canvas is already mirrored, so landmarks will be automatically mirrored
     if (els.enableHands.checked && currentHandResults && currentHandResults.multiHandLandmarks) {
       currentHandResults.multiHandLandmarks.forEach(landmarks => {
         drawConnectors(ctx, landmarks, HAND_CONNECTIONS, { color: '#00FF00', lineWidth: 2 });
         drawLandmarks(ctx, landmarks, { color: '#00FF00', lineWidth: 1, radius: 2 });
       });
     }
+    
+    ctx.restore();
     
     // Record frame data if recording (record at regular intervals)
     if (isRecording) {
@@ -330,8 +338,6 @@ function renderVideoLoop() {
         lastRecordTime = now;
       }
     }
-    
-    ctx.restore();
   }
   
   if (camera) {
@@ -436,6 +442,7 @@ els.btnStart.addEventListener('click', async () => {
       height: 480
     });
 
+    // Note: Video will be mirrored in canvas drawing, not with CSS
     await camera.start();
     
     // Start continuous video rendering

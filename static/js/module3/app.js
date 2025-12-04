@@ -1378,13 +1378,22 @@ els.next.onclick = async () => { if (!state.images.length) return; state.index =
 els.camStart.onclick = async () => {
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 } }, audio: false });
-    state.stream = stream; els.video.srcObject = stream; state.source = 'webcam';
+    state.stream = stream; els.video.srcObject = stream;
+    // Mirror the video element for natural left/right movement
+    els.video.style.transform = 'scaleX(-1)';
+    state.source = 'webcam';
     els.camCapture.disabled = false; els.camStop.disabled = false; enableNav(false); await renderCurrent();
   } catch (err) { setStatus(`Camera error: ${err.message}`); }
 };
 els.camCapture.onclick = () => {
   const v = els.video, c = els.canvas, ctx = c.getContext('2d');
-  c.width = v.videoWidth; c.height = v.videoHeight; ctx.drawImage(v, 0, 0, c.width, c.height);
+  c.width = v.videoWidth; c.height = v.videoHeight;
+  // Mirror the video when capturing (horizontal flip)
+  ctx.save();
+  ctx.scale(-1, 1);
+  ctx.translate(-c.width, 0);
+  ctx.drawImage(v, 0, 0, c.width, c.height);
+  ctx.restore();
   v.pause();
   c.toBlob(async (blob) => {
     const bmp = await createImageBitmap(blob);
