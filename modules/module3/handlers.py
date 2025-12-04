@@ -705,9 +705,9 @@ def detect_boundary_handler(image_data, method='contour', close_k=5, min_area_pc
     
     if not all([original_encoded, boundary_encoded, overlay_encoded]):
         return {'success': False, 'error': 'Failed to encode result images'}
-        
-        return {
-            'success': True,
+    
+    return {
+        'success': True,
         'original_image': original_encoded,
         'boundary': boundary_encoded,
         'boundary_overlay': overlay_encoded,
